@@ -5,7 +5,7 @@ import App from './App'
 describe('App', () => {
   it('renders the studio header', () => {
     render(<App />)
-    expect(screen.getByText('OpenClaw Workflow Studio')).toBeInTheDocument()
-    expect(screen.getByText(/Chat-authored workflow cockpit/i)).toBeInTheDocument()
+    expect(screen.getByText('Workflow Studio')).toBeInTheDocument()
+    expect(screen.getByText(/Design, review, and run connected workflows/i)).toBeInTheDocument()
   })
 })

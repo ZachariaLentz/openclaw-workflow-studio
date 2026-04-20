@@ -51,7 +51,7 @@ function GraphView({ workflow, selectedNodeId, onSelectNode }) {
     <div className="diagram-wrap">
       <div className="diagram-explainer">
         <span className="pill">left → right</span>
-        <span className="muted">Triggers begin flows. Nodes can branch, merge, continue, or end independently.</span>
+        <span className="muted">Each step passes work forward. Paths can split, rejoin, continue, or end.</span>
       </div>
       <div className="diagram-surface" style={{ width: size.width, height: size.height }}>
         <svg className="diagram-svg" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
@@ -105,7 +105,7 @@ function GraphView({ workflow, selectedNodeId, onSelectNode }) {
 function EdgeList({ workflow }) {
   return (
     <div className="panel-section">
-      <div className="section-title">Connections</div>
+      <div className="section-title">Paths</div>
       <div className="edge-list">
         {workflow.edges.map((edge) => (
           <div key={edge.id} className="edge-item">
@@ -143,13 +143,13 @@ function ToolList({ workflow }) {
 function ValidationPanel({ validation }) {
   return (
     <div className="panel-section">
-      <div className="section-title">Validation</div>
-      {validation.ok ? <div className="success">Workflow schema valid.</div> : null}
+      <div className="section-title">Status</div>
+      {validation.ok ? <div className="success">Workflow looks ready.</div> : null}
       {!validation.ok ? (
         <div className="error-list">
           {validation.errors.map((error, index) => (
             <div key={`${error.path}-${index}`} className="error-item">
-              <strong>{error.path || 'workflow'}</strong>
+              <strong>{error.path || 'flow'}</strong>
               <span>{error.message}</span>
             </div>
           ))}
@@ -163,15 +163,15 @@ function NodeInspector({ node, value, onChange }) {
   if (!node) {
     return (
       <div className="panel-section">
-        <div className="section-title">Node Inspector</div>
-        <div className="muted">Select a node to inspect/edit its JSON.</div>
+        <div className="section-title">Step Details</div>
+        <div className="muted">Select a step to review or edit its details.</div>
       </div>
     )
   }
 
   return (
     <div className="panel-section grow">
-      <div className="section-title">Node Inspector</div>
+      <div className="section-title">Step Details</div>
       <div className="inspector-meta">
         <span className="pill">{node.type}</span>
         <span>{node.label}</span>
@@ -185,12 +185,12 @@ function RunPanel({ runState, running, onRun }) {
   return (
     <div className="panel-section grow">
       <div className="section-title row-between">
-        <span>Runtime</span>
+        <span>Activity</span>
         <button className="primary-button" onClick={onRun} disabled={running}>
           {running ? 'Running…' : 'Run workflow'}
         </button>
       </div>
-      <div className="muted">Local MVP runtime simulator.</div>
+      <div className="muted">Run the flow and watch each step complete.</div>
       <div className="run-status-grid">
         {runState
           ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (
@@ -296,12 +296,12 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <h1>OpenClaw Workflow Studio</h1>
-          <p>Chat-authored workflow cockpit for OpenClaw-native apps.</p>
+          <h1>Workflow Studio</h1>
+          <p>Design, review, and run connected workflows.</p>
         </div>
         <div className="topbar-actions">
           <label>
-            Example
+            Workflow
             <select value={workflowIndex} onChange={(event) => loadWorkflow(Number(event.target.value))}>
               {sampleWorkflows.map((workflow, index) => (
                 <option key={workflow.id} value={index}>
@@ -330,7 +330,7 @@ function App() {
           </div>
 
           <div className="panel">
-            <div className="section-title">Workflow Diagram</div>
+            <div className="section-title">Workflow</div>
             {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
           </div>
 
@@ -342,7 +342,7 @@ function App() {
 
         <aside className="right-column">
           <div className="panel workflow-editor-panel">
-            <div className="section-title">Canonical Workflow JSON</div>
+            <div className="section-title">Workflow Data</div>
             <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
           </div>
 
