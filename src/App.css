@@ -119,25 +119,78 @@ button {
   margin-bottom: 12px;
 }
 
-.graph-grid {
+.diagram-wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
-.node-card {
+.diagram-explainer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.diagram-surface {
+  position: relative;
+  overflow: auto;
+  max-width: 100%;
+  min-height: 240px;
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    rgba(9, 14, 28, 0.94);
+  background-size: 24px 24px, 24px 24px, auto;
+  border: 1px solid rgba(130, 152, 201, 0.18);
+}
+
+.diagram-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.diagram-edge {
+  fill: none;
+  stroke: #7ea3ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.92;
+}
+
+.diagram-edge-label {
+  fill: #dce7ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.diagram-node {
+  position: absolute;
   text-align: left;
-  background: rgba(18, 27, 49, 0.95);
+  background: rgba(18, 27, 49, 0.98);
   color: #eef3ff;
-  border: 1px solid rgba(130, 152, 201, 0.24);
-  border-radius: 14px;
+  border: 1px solid rgba(130, 152, 201, 0.26);
+  border-radius: 16px;
   padding: 12px;
-  min-height: 110px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
 }
 
-.node-card.selected {
+.diagram-node.selected {
   border-color: #79a7ff;
-  box-shadow: 0 0 0 1px rgba(121, 167, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(121, 167, 255, 0.45), 0 16px 30px rgba(0, 0, 0, 0.3);
+}
+
+.diagram-node.trigger {
+  background: linear-gradient(180deg, rgba(32, 66, 117, 0.98), rgba(18, 27, 49, 0.98));
+}
+
+.diagram-node.branch {
+  background: linear-gradient(180deg, rgba(90, 62, 126, 0.98), rgba(18, 27, 49, 0.98));
+}
+
+.diagram-node.output {
+  background: linear-gradient(180deg, rgba(48, 95, 86, 0.98), rgba(18, 27, 49, 0.98));
 }
 
 .node-type {

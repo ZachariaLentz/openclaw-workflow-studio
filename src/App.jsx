@@ -4,20 +4,100 @@ import { sampleWorkflows } from './data/workflows'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
 
+const NODE_WIDTH = 180
+const NODE_HEIGHT = 92
+const GRID_X = 220
+const GRID_Y = 132
+const PADDING_X = 40
+const PADDING_Y = 40
+
+function getNodePosition(node) {
+  return {
+    left: PADDING_X + (node.position?.x ?? 0) * GRID_X,
+    top: PADDING_Y + (node.position?.y ?? 0) * GRID_Y,
+  }
+}
+
+function getCanvasSize(workflow) {
+  const xs = workflow.nodes.map((node) => node.position?.x ?? 0)
+  const ys = workflow.nodes.map((node) => node.position?.y ?? 0)
+  const maxX = xs.length ? Math.max(...xs) : 0
+  const maxY = ys.length ? Math.max(...ys) : 0
+
+  return {
+    width: PADDING_X * 2 + NODE_WIDTH + maxX * GRID_X,
+    height: PADDING_Y * 2 + NODE_HEIGHT + maxY * GRID_Y,
+  }
+}
+
+function getEdgePath(fromNode, toNode) {
+  const from = getNodePosition(fromNode)
+  const to = getNodePosition(toNode)
+
+  const startX = from.left + NODE_WIDTH
+  const startY = from.top + NODE_HEIGHT / 2
+  const endX = to.left
+  const endY = to.top + NODE_HEIGHT / 2
+  const deltaX = Math.max(40, (endX - startX) / 2)
+
+  return `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
+}
+
 function GraphView({ workflow, selectedNodeId, onSelectNode }) {
+  const size = getCanvasSize(workflow)
+  const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node]))
+
   return (
-    <div className="graph-grid">
-      {workflow.nodes.map((node) => (
-        <button
-          key={node.id}
-          className={`node-card ${selectedNodeId === node.id ? 'selected' : ''}`}
-          onClick={() => onSelectNode(node.id)}
-        >
-          <div className="node-type">{node.type}</div>
-          <div className="node-label">{node.label}</div>
-          <div className="node-id">{node.id}</div>
-        </button>
-      ))}
+    <div className="diagram-wrap">
+      <div className="diagram-explainer">
+        <span className="pill">left → right</span>
+        <span className="muted">Triggers begin flows. Nodes can branch, merge, continue, or end independently.</span>
+      </div>
+      <div className="diagram-surface" style={{ width: size.width, height: size.height }}>
+        <svg className="diagram-svg" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
+          <defs>
+            <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+              <path d="M 0 0 L 12 6 L 0 12 z" fill="#7ea3ff" />
+            </marker>
+          </defs>
+          {workflow.edges.map((edge) => {
+            const fromNode = nodeMap.get(edge.from)
+            const toNode = nodeMap.get(edge.to)
+            if (!fromNode || !toNode) return null
+
+            return (
+              <g key={edge.id}>
+                <path d={getEdgePath(fromNode, toNode)} className="diagram-edge" markerEnd="url(#arrowhead)" />
+                {edge.condition ? (
+                  <text
+                    x={(getNodePosition(fromNode).left + NODE_WIDTH + getNodePosition(toNode).left) / 2}
+                    y={(getNodePosition(fromNode).top + getNodePosition(toNode).top) / 2 + 8}
+                    className="diagram-edge-label"
+                  >
+                    {edge.condition}
+                  </text>
+                ) : null}
+              </g>
+            )
+          })}
+        </svg>
+
+        {workflow.nodes.map((node) => {
+          const position = getNodePosition(node)
+          return (
+            <button
+              key={node.id}
+              className={`diagram-node ${selectedNodeId === node.id ? 'selected' : ''} ${node.type}`}
+              style={{ left: position.left, top: position.top, width: NODE_WIDTH, height: NODE_HEIGHT }}
+              onClick={() => onSelectNode(node.id)}
+            >
+              <div className="node-type">{node.type}</div>
+              <div className="node-label">{node.label}</div>
+              <div className="node-id">{node.id}</div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -25,7 +105,7 @@ function GraphView({ workflow, selectedNodeId, onSelectNode }) {
 function EdgeList({ workflow }) {
   return (
     <div className="panel-section">
-      <div className="section-title">Edges</div>
+      <div className="section-title">Connections</div>
       <div className="edge-list">
         {workflow.edges.map((edge) => (
           <div key={edge.id} className="edge-item">
@@ -140,7 +220,6 @@ function App() {
   const [nodeEditorText, setNodeEditorText] = useState(JSON.stringify(sampleWorkflows[0].nodes[0], null, 2))
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
-  const [parseError, setParseError] = useState('')
 
   const parsedResult = useMemo(() => {
     try {
@@ -251,7 +330,7 @@ function App() {
           </div>
 
           <div className="panel">
-            <div className="section-title">Workflow Graph</div>
+            <div className="section-title">Workflow Diagram</div>
             {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
           </div>
 
