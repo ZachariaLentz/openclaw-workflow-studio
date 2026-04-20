@@ -52,10 +52,21 @@ button {
   color: #c9d4ea;
 }
 
+.topbar-action-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
   gap: 20px;
+}
+
+.app-layout-with-chat {
+  align-items: start;
 }
 
 .left-column,
@@ -75,6 +86,10 @@ button {
 
 .hero-panel {
   padding-bottom: 4px;
+}
+
+.panel-section {
+  margin-bottom: 14px;
 }
 
 .hero-header h2 {
@@ -297,6 +312,82 @@ select {
 
 .muted {
   color: #95a3c2;
+}
+
+.connection-copy {
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
+.connection-pills {
+  margin-top: 10px;
+}
+
+.trigger-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.story-preview {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.story-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #dfe9ff;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.socrates-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-log {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.chat-bubble {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(123, 145, 194, 0.16);
+  background: rgba(19, 28, 50, 0.92);
+}
+
+.chat-bubble.user {
+  background: rgba(34, 48, 86, 0.96);
+}
+
+.chat-input {
+  width: 100%;
+  min-height: 120px;
+  border-radius: 14px;
+  border: 1px solid rgba(133, 154, 203, 0.24);
+  background: #0b1328;
+  color: #eff4ff;
+  padding: 14px;
+  resize: vertical;
+}
+
+.small-copy {
+  font-size: 0.85rem;
 }
 
 .status-pending strong {

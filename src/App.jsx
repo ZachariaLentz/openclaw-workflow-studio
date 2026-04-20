@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { sampleWorkflows } from './data/workflows'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
+import { getInitialWorkflows, loadLocalConnectionState } from './lib/liveWorkflow'
+import { generateStoryIdea } from './lib/openclaw'
+import { sendToSocrates } from './lib/socrates'
+import { createBlankWorkflow } from './lib/newWorkflow'
 
+const initialWorkflows = getInitialWorkflows()
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 92
 const GRID_X = 220
@@ -159,7 +163,7 @@ function ValidationPanel({ validation }) {
   )
 }
 
-function NodeInspector({ node, value, onChange }) {
+function NodeInspector({ node, value, onChange, onTrigger, canTrigger, triggerLabel }) {
   if (!node) {
     return (
       <div className="panel-section">
@@ -176,17 +180,23 @@ function NodeInspector({ node, value, onChange }) {
         <span className="pill">{node.type}</span>
         <span>{node.label}</span>
       </div>
+      {canTrigger ? (
+        <div className="trigger-panel">
+          <div className="muted">This workflow starts from this trigger.</div>
+          <button className="primary-button" onClick={() => onTrigger(node.id)}>{triggerLabel}</button>
+        </div>
+      ) : null}
       <textarea className="json-editor" value={value} onChange={(event) => onChange(event.target.value)} spellCheck="false" />
     </div>
   )
 }
 
-function RunPanel({ runState, running, onRun }) {
+function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
   return (
     <div className="panel-section grow">
       <div className="section-title row-between">
         <span>Activity</span>
-        <button className="primary-button" onClick={onRun} disabled={running}>
+        <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>
           {running ? 'Running…' : 'Run workflow'}
         </button>
       </div>
@@ -209,17 +219,87 @@ function RunPanel({ runState, running, onRun }) {
           </div>
         ))}
       </div>
+      {runState?.nodeOutputs?.['save-to-drive']?.result?.editedText ? (
+        <div className="story-preview">
+          <div className="section-title">Latest Story Output</div>
+          <pre>{runState.nodeOutputs['save-to-drive'].result.editedText}</pre>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ConnectionPanel({ connection, refreshing, onRefresh }) {
+  const status = connection.connected ? 'Connected to local OpenClaw' : 'Local connection unavailable'
+  const detail = connection.connected
+    ? connection.status?.status?.raw || 'Local bridge reachable.'
+    : connection.error || 'Using built-in sample data.'
+
+  return (
+    <div className="panel-section">
+      <div className="section-title row-between">
+        <span>Local Connection</span>
+        <button className="secondary-button" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+      <div className={connection.connected ? 'success' : 'muted'}>{status}</div>
+      <div className="muted connection-copy">{detail}</div>
+      <div className="hero-pills connection-pills">
+        <span className="pill">{connection.bridgeUrl || 'bridge unknown'}</span>
+        {connection.connected ? <span className="pill">live bridge</span> : <span className="pill">sample mode</span>}
+      </div>
+    </div>
+  )
+}
+
+function SocratesPanel({ connection, workflowText, messages, draftMessage, onDraftChange, onSend, sending }) {
+  return (
+    <div className="panel socrates-panel">
+      <div className="section-title row-between">
+        <span>Socrates</span>
+        <span className="pill">authoring chat</span>
+      </div>
+      <div className="muted">Shape or revise the workflow in-app while keeping the authoring lane separate from runtime execution.</div>
+      <div className="chat-log">
+        {messages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow.</div> : null}
+        {messages.map((item, index) => (
+          <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}>
+            <strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong>
+            <div>{item.text}</div>
+          </div>
+        ))}
+      </div>
+      <textarea
+        className="chat-input"
+        value={draftMessage}
+        onChange={(event) => onDraftChange(event.target.value)}
+        placeholder="Ask Socrates to create a workflow, adjust steps, or explain the next change."
+        spellCheck="false"
+      />
+      <div className="row-between">
+        <span className="muted small-copy">{connection.connected ? 'Uses local Socrates session' : 'Bridge required for live Socrates chat'}</span>
+        <button className="primary-button" disabled={sending || !connection.connected || !draftMessage.trim()} onClick={() => onSend(workflowText)}>
+          {sending ? 'Sending…' : 'Send to Socrates'}
+        </button>
+      </div>
     </div>
   )
 }
 
 function App() {
+  const [workflows, setWorkflows] = useState(initialWorkflows)
   const [workflowIndex, setWorkflowIndex] = useState(0)
-  const [workflowText, setWorkflowText] = useState(JSON.stringify(sampleWorkflows[0], null, 2))
-  const [selectedNodeId, setSelectedNodeId] = useState(sampleWorkflows[0].nodes[0]?.id)
-  const [nodeEditorText, setNodeEditorText] = useState(JSON.stringify(sampleWorkflows[0].nodes[0], null, 2))
+  const [workflowText, setWorkflowText] = useState(JSON.stringify(initialWorkflows[0], null, 2))
+  const [selectedNodeId, setSelectedNodeId] = useState(initialWorkflows[0].nodes[0]?.id)
+  const [nodeEditorText, setNodeEditorText] = useState(JSON.stringify(initialWorkflows[0].nodes[0], null, 2))
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
+  const [connection, setConnection] = useState({ connected: false, bridgeUrl: 'http://127.0.0.1:4318' })
+  const [refreshingConnection, setRefreshingConnection] = useState(false)
+  const [socratesMessages, setSocratesMessages] = useState([])
+  const [socratesDraft, setSocratesDraft] = useState('')
+  const [sendingToSocrates, setSendingToSocrates] = useState(false)
 
   const parsedResult = useMemo(() => {
     try {
@@ -238,6 +318,8 @@ function App() {
   }, [parsedWorkflow, parseErrorText])
 
   const selectedNode = parsedWorkflow?.nodes?.find((node) => node.id === selectedNodeId)
+  const defaultTriggerNodeId = parsedWorkflow?.entryNodeId ?? parsedWorkflow?.nodes?.find((node) => node.type === 'trigger')?.id
+  const canTriggerSelectedNode = selectedNode?.type === 'trigger' && selectedNode?.id === defaultTriggerNodeId
 
   useEffect(() => {
     if (!selectedNodeId && parsedWorkflow?.nodes?.[0]?.id) {
@@ -251,13 +333,45 @@ function App() {
     }
   }, [parsedWorkflow, selectedNode, selectedNodeId])
 
+  useEffect(() => {
+    refreshConnection()
+  }, [])
+
+  async function refreshConnection() {
+    setRefreshingConnection(true)
+    try {
+      const next = await loadLocalConnectionState()
+      setConnection(next)
+    } finally {
+      setRefreshingConnection(false)
+    }
+  }
+
   function loadWorkflow(index) {
-    const workflow = sampleWorkflows[index]
+    const workflow = workflows[index]
     setWorkflowIndex(index)
     setWorkflowText(JSON.stringify(workflow, null, 2))
     setSelectedNodeId(workflow.nodes[0]?.id)
     setNodeEditorText(JSON.stringify(workflow.nodes[0], null, 2))
     setRunState(null)
+    setSocratesMessages([])
+  }
+
+  function handleNewWorkflow() {
+    const nextWorkflow = createBlankWorkflow()
+    setWorkflows((current) => [...current, nextWorkflow])
+    const nextIndex = workflows.length
+    setWorkflowIndex(nextIndex)
+    setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
+    setSelectedNodeId(nextWorkflow.nodes[0]?.id)
+    setNodeEditorText(JSON.stringify(nextWorkflow.nodes[0], null, 2))
+    setRunState(null)
+    setSocratesMessages([
+      {
+        role: 'assistant',
+        text: 'New workflow created. Ask Socrates to shape the first real version.',
+      },
+    ])
   }
 
   function handleSelectNode(nodeId) {
@@ -281,14 +395,39 @@ function App() {
     }
   }
 
-  async function handleRun() {
-    if (!validation.ok || !parsedWorkflow) return
+  async function handleRun(triggerNodeId = defaultTriggerNodeId) {
+    if (!validation.ok || !parsedWorkflow || !triggerNodeId) return
     setRunning(true)
     setRunState(null)
     try {
-      await runWorkflow(parsedWorkflow, (nextState) => setRunState(nextState))
+      await runWorkflow(parsedWorkflow, (nextState) => setRunState(nextState), {
+        triggerNodeId,
+        liveExecutors: connection.connected
+          ? {
+              generateStoryIdea,
+            }
+          : undefined,
+      })
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function handleSendToSocrates(currentWorkflowText) {
+    const text = socratesDraft.trim()
+    if (!text) return
+
+    setSendingToSocrates(true)
+    setSocratesMessages((current) => [...current, { role: 'user', text }])
+    setSocratesDraft('')
+
+    try {
+      const result = await sendToSocrates(text, currentWorkflowText)
+      setSocratesMessages((current) => [...current, { role: 'assistant', text: result.reply }])
+    } catch (error) {
+      setSocratesMessages((current) => [...current, { role: 'assistant', text: `Socrates unavailable: ${error.message}` }])
+    } finally {
+      setSendingToSocrates(false)
     }
   }
 
@@ -299,11 +438,12 @@ function App() {
           <h1>Workflow Studio</h1>
           <p>Design, review, and run connected workflows.</p>
         </div>
-        <div className="topbar-actions">
+        <div className="topbar-actions topbar-action-row">
+          <button className="secondary-button" onClick={handleNewWorkflow}>New workflow</button>
           <label>
             Workflow
             <select value={workflowIndex} onChange={(event) => loadWorkflow(Number(event.target.value))}>
-              {sampleWorkflows.map((workflow, index) => (
+              {workflows.map((workflow, index) => (
                 <option key={workflow.id} value={index}>
                   {workflow.name}
                 </option>
@@ -313,7 +453,7 @@ function App() {
         </div>
       </header>
 
-      <main className="layout">
+      <main className="layout app-layout-with-chat">
         <section className="left-column">
           <div className="panel hero-panel">
             <div className="hero-header row-between">
@@ -326,6 +466,7 @@ function App() {
                 <span className="pill">v{parsedWorkflow?.version ?? '—'}</span>
               </div>
             </div>
+            <ConnectionPanel connection={connection} refreshing={refreshingConnection} onRefresh={refreshConnection} />
             <ValidationPanel validation={validation} />
           </div>
 
@@ -333,6 +474,16 @@ function App() {
             <div className="section-title">Workflow</div>
             {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
           </div>
+
+          <SocratesPanel
+            connection={connection}
+            workflowText={workflowText}
+            messages={socratesMessages}
+            draftMessage={socratesDraft}
+            onDraftChange={setSocratesDraft}
+            onSend={handleSendToSocrates}
+            sending={sendingToSocrates}
+          />
 
           <div className="panel two-up">
             {parsedWorkflow ? <EdgeList workflow={parsedWorkflow} /> : null}
@@ -347,12 +498,19 @@ function App() {
           </div>
 
           <div className="panel inspector-panel">
-            <NodeInspector node={selectedNode} value={nodeEditorText} onChange={setNodeEditorText} />
+            <NodeInspector
+              node={selectedNode}
+              value={nodeEditorText}
+              onChange={setNodeEditorText}
+              onTrigger={handleRun}
+              canTrigger={canTriggerSelectedNode}
+              triggerLabel={selectedNode?.config?.triggerLabel ?? 'Start workflow'}
+            />
             <button className="secondary-button" onClick={applyNodeEditor}>Apply node edit</button>
           </div>
 
           <div className="panel">
-            <RunPanel runState={runState} running={running} onRun={handleRun} />
+            <RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} />
           </div>
         </aside>
       </main>

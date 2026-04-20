@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "bridge": "node bridge-server.mjs",
     "deploy:gh": "npm run build && gh-pages -d dist"
   },
   "dependencies": {

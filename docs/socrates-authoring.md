@@ -1,8 +1,13 @@
 # Socrates Workflow Authoring Strategy
 
 ## Role
-Socrates/OpenClaw should be the primary workflow authoring layer.
+Socrates should be the primary workflow authoring and editing layer for OpenClaw Workflow Studio.
 The app is the view and control surface, not the primary manual builder.
+
+Socrates is responsible for turning Zacharia’s natural-language workflow intent into valid workflow definitions, revisions, and patches.
+Socrates is not the default runtime actor for every workflow node.
+
+A separate runtime agent should execute OpenClaw-backed workflow nodes. In this phase that runtime agent is Daedalus.
 
 ## Authoring contract
 Socrates should:
@@ -18,11 +23,12 @@ Socrates should:
 
 ## Preferred authoring flow
 1. user describes desired app/workflow in natural language
-2. Socrates drafts canonical workflow JSON
-3. app displays workflow and validation state
-4. user continues editing in chat
-5. Socrates patches workflow JSON
-6. runtime executes selected version
+2. Pericles ensures a Socrates session is started and kept active while workflow design/editing is underway
+3. Socrates drafts canonical workflow JSON
+4. app displays workflow and validation state
+5. user continues editing in chat or app
+6. Socrates patches workflow JSON with minimal diffs
+7. Daedalus or another dedicated runtime actor executes selected workflow nodes at runtime
 
 ## Improvement path
 Later, Socrates should learn from:
@@ -40,3 +46,4 @@ Use retrieval over workflow corpus before pursuing opaque self-improvement.
 - runtime semantics
 - app binding rules
 - example workflows
+- explicit role boundary between authoring (Socrates) and runtime execution (Daedalus)
