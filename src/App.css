@@ -518,6 +518,10 @@ select {
   gap: 14px;
 }
 
+.bridge-config-card {
+  margin-top: 14px;
+}
+
 .provider-title {
   margin-bottom: 6px;
 }

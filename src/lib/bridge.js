@@ -1,8 +1,8 @@
-const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:4318'
+import { getSavedBridgeUrl } from './bridgeConfig'
 
 function resolveBridgeUrl() {
   const configured = import.meta.env.VITE_OCWS_BRIDGE_URL
-  return (configured || DEFAULT_BRIDGE_URL).replace(/\/$/, '')
+  return (configured || getSavedBridgeUrl()).replace(/\/$/, '')
 }
 
 async function fetchJson(path, options) {

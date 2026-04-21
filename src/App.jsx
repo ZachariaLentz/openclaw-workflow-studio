@@ -8,6 +8,7 @@ import { sendToSocrates } from './lib/socrates'
 import { createBlankWorkflow } from './lib/newWorkflow'
 import { connectGoogleAccount, connectProvider, getGoogleConnectionStatus, testAccount } from './lib/bridge'
 import { getCompatibleAccounts } from './lib/accounts'
+import { clearBridgeUrl, getDefaultBridgeUrl, getSavedBridgeUrl, saveBridgeUrl } from './lib/bridgeConfig'
 
 const initialWorkflows = getInitialWorkflows()
 const NODE_WIDTH = 180
@@ -436,16 +437,16 @@ function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
   )
 }
 
-function ConnectionPanel({ connection, refreshing, onRefresh }) {
-  const status = connection.connected ? 'Connected to local OpenClaw' : 'Local connection unavailable'
+function ConnectionPanel({ connection, refreshing, onRefresh, bridgeUrlDraft, onBridgeUrlChange, onSaveBridgeUrl, onResetBridgeUrl }) {
+  const status = connection.connected ? 'Connected to bridge' : 'Bridge unavailable'
   const detail = connection.connected
-    ? connection.status?.status?.raw || 'Local bridge reachable.'
+    ? connection.status?.status?.raw || 'Bridge reachable.'
     : connection.error || 'Using built-in sample data.'
 
   return (
     <div className="panel-section">
       <div className="section-title row-between">
-        <span>Local Connection</span>
+        <span>Bridge Connection</span>
         <button className="secondary-button" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
@@ -455,6 +456,18 @@ function ConnectionPanel({ connection, refreshing, onRefresh }) {
       <div className="hero-pills connection-pills">
         <span className="pill">{connection.bridgeUrl || 'bridge unknown'}</span>
         {connection.connected ? <span className="pill">live bridge</span> : <span className="pill">sample mode</span>}
+      </div>
+      <div className="node-form-card bridge-config-card">
+        <div className="section-title">Bridge URL</div>
+        <label className="field-label">
+          Workflow Studio bridge target
+          <input className="text-input" value={bridgeUrlDraft} onChange={(event) => onBridgeUrlChange(event.target.value)} />
+        </label>
+        <div className="provider-actions">
+          <button className="primary-button" onClick={onSaveBridgeUrl}>Save bridge URL</button>
+          <button className="secondary-button" onClick={onResetBridgeUrl}>Reset to default</button>
+        </div>
+        <div className="muted small-copy">Use this when the bridge runs on your OpenClaw machine somewhere other than this device’s localhost.</div>
       </div>
     </div>
   )
@@ -576,6 +589,7 @@ function App() {
   const [sendingToSocrates, setSendingToSocrates] = useState(false)
   const [oauthStatus, setOauthStatus] = useState(null)
   const [accountsMessage, setAccountsMessage] = useState('')
+  const [bridgeUrlDraft, setBridgeUrlDraft] = useState(getSavedBridgeUrl())
 
   const parsedResult = useMemo(() => {
     try {
@@ -626,6 +640,7 @@ function App() {
   }, [parsedWorkflow, selectedNode, selectedNodeId])
 
   useEffect(() => {
+    setBridgeUrlDraft(getSavedBridgeUrl())
     refreshConnection()
   }, [])
 
@@ -637,6 +652,20 @@ function App() {
     } finally {
       setRefreshingConnection(false)
     }
+  }
+
+  function saveBridgeTarget() {
+    saveBridgeUrl(bridgeUrlDraft)
+    setAccountsMessage(`Bridge URL saved: ${(bridgeUrlDraft || getDefaultBridgeUrl()).trim()}`)
+    refreshConnection()
+  }
+
+  function resetBridgeTarget() {
+    clearBridgeUrl()
+    const nextUrl = getDefaultBridgeUrl()
+    setBridgeUrlDraft(nextUrl)
+    setAccountsMessage('Bridge URL reset to default localhost.')
+    refreshConnection()
   }
 
   function loadWorkflow(index) {
@@ -868,7 +897,15 @@ function App() {
                   <span className="pill">v{parsedWorkflow?.version ?? '—'}</span>
                 </div>
               </div>
-              <ConnectionPanel connection={connection} refreshing={refreshingConnection} onRefresh={refreshConnection} />
+              <ConnectionPanel
+                connection={connection}
+                refreshing={refreshingConnection}
+                onRefresh={refreshConnection}
+                bridgeUrlDraft={bridgeUrlDraft}
+                onBridgeUrlChange={setBridgeUrlDraft}
+                onSaveBridgeUrl={saveBridgeTarget}
+                onResetBridgeUrl={resetBridgeTarget}
+              />
               <ValidationPanel validation={validation} />
             </div>
 
