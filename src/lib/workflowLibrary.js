@@ -52,6 +52,14 @@ function getFallbackWorkflows() {
   return normalizeStoredWorkflows(sampleWorkflows)
 }
 
+function mergeMissingSampleWorkflows(workflows) {
+  const fallback = getFallbackWorkflows()
+  const existingIds = new Set(workflows.map((workflow) => workflow.id))
+  const missing = fallback.filter((workflow) => !existingIds.has(workflow.id))
+  if (missing.length === 0) return workflows
+  return saveWorkflowLibrary([...workflows, ...missing])
+}
+
 export function saveWorkflowLibrary(workflows) {
   const storage = getStorage()
   if (!storage) return normalizeStoredWorkflows(workflows)
@@ -79,7 +87,7 @@ export function loadWorkflowLibrary() {
       return fallback
     }
 
-    return normalizeStoredWorkflows(parsed)
+    return mergeMissingSampleWorkflows(normalizeStoredWorkflows(parsed))
   } catch {
     const fallback = getFallbackWorkflows()
     saveWorkflowLibrary(fallback)

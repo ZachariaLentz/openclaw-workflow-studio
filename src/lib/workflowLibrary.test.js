@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { sampleWorkflows } from '../data/workflows'
 import { createBlankWorkflow } from './newWorkflow'
 import { buildWorkflowLibraryView, loadWorkflowLibrary, touchWorkflowOpened, upsertWorkflowInLibrary, WORKFLOW_LIBRARY_STORAGE_KEY } from './workflowLibrary'
 
@@ -34,5 +35,16 @@ describe('workflowLibrary', () => {
     expect(searchView.items[0].id).toBe('alpha-workflow')
     expect(openedView.items[0].id).toBe('alpha-workflow')
     expect(openedView.stats.totalWorkflows).toBe(base.length + 1)
+  })
+
+  it('merges missing sample workflows into previously persisted library state', () => {
+    const fallback = loadWorkflowLibrary()
+    const storyOnly = fallback.filter((workflow) => workflow.id === 'childrens-story-book')
+    window.localStorage.setItem(WORKFLOW_LIBRARY_STORAGE_KEY, JSON.stringify(storyOnly))
+
+    const reloaded = loadWorkflowLibrary()
+
+    expect(reloaded).toHaveLength(sampleWorkflows.length)
+    expect(reloaded.some((workflow) => workflow.id === 'scheduled-mission-briefing')).toBe(true)
   })
 })
