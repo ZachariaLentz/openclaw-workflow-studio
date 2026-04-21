@@ -494,12 +494,13 @@ function SocratesPanel({ connection, workflowText, messages, draftMessage, onDra
   )
 }
 
-function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refreshing, oauthStatus }) {
+function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refreshing, oauthStatus, accountsMessage }) {
   return (
     <div className="accounts-page">
       <div className="panel">
         <div className="section-title">Accounts</div>
         <div className="muted">Connect the services your workflows use.</div>
+        {accountsMessage ? <div className="account-banner">{accountsMessage}</div> : null}
       </div>
 
       <div className="accounts-grid">
@@ -526,6 +527,14 @@ function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refr
                   {oauthStatus.status === 'pending' ? 'Waiting for Google sign-in to finish…' : null}
                   {oauthStatus.status === 'connected' ? 'Google account connected. Refreshing account list…' : null}
                   {oauthStatus.status === 'failed' ? `Google sign-in failed: ${oauthStatus.error || 'Unknown error'}` : null}
+                  {oauthStatus.status === 'popup_blocked' ? 'Popup was blocked. Use the open link to continue Google sign-in.' : null}
+                </div>
+              ) : null}
+              {provider.id === 'google' && oauthStatus?.authUrl && (oauthStatus.status === 'pending' || oauthStatus.status === 'popup_blocked') ? (
+                <a className="secondary-button inline-button" href={oauthStatus.authUrl} target="_blank" rel="noreferrer">
+                  Open Google sign-in
+                </a>
+              ) : null}
                 </div>
               ) : null}
 
@@ -568,6 +577,7 @@ function App() {
   const [socratesDraft, setSocratesDraft] = useState('')
   const [sendingToSocrates, setSendingToSocrates] = useState(false)
   const [oauthStatus, setOauthStatus] = useState(null)
+  const [accountsMessage, setAccountsMessage] = useState('')
 
   const parsedResult = useMemo(() => {
     try {
@@ -740,36 +750,61 @@ function App() {
 
   async function handleConnectProvider(provider) {
     setActiveView('accounts')
+    setAccountsMessage('')
 
     if (provider === 'google') {
-      const result = await connectGoogleAccount()
-      const popup = window.open(result.authUrl, 'workflow-studio-google-connect', 'width=560,height=720')
-      setOauthStatus({ provider: 'google', status: 'pending', connectionId: result.connectionId, error: null })
+      try {
+        const result = await connectGoogleAccount()
+        const popup = window.open(result.authUrl, 'workflow-studio-google-connect', 'width=560,height=720')
+        const popupBlocked = !popup || popup.closed || typeof popup.closed === 'undefined'
+        setOauthStatus({
+          provider: 'google',
+          status: popupBlocked ? 'popup_blocked' : 'pending',
+          connectionId: result.connectionId,
+          error: null,
+          authUrl: result.authUrl,
+        })
 
-      const startedAt = Date.now()
-      while (Date.now() - startedAt < 5 * 60 * 1000) {
-        const status = await getGoogleConnectionStatus(result.connectionId)
-        setOauthStatus({ provider: 'google', status: status.status, connectionId: result.connectionId, error: status.error || null })
+        const startedAt = Date.now()
+        while (Date.now() - startedAt < 5 * 60 * 1000) {
+          const status = await getGoogleConnectionStatus(result.connectionId)
+          setOauthStatus({
+            provider: 'google',
+            status: status.status,
+            connectionId: result.connectionId,
+            error: status.error || null,
+            authUrl: result.authUrl,
+          })
 
-        if (status.status === 'connected') {
-          popup?.close()
-          await refreshConnection()
-          return
+          if (status.status === 'connected') {
+            popup?.close()
+            setAccountsMessage('Google account connected.')
+            await refreshConnection()
+            return
+          }
+
+          if (status.status === 'failed') {
+            popup?.close()
+            setAccountsMessage(`Google sign-in failed: ${status.error || 'Unknown error'}`)
+            return
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 1500))
         }
 
-        if (status.status === 'failed') {
-          popup?.close()
-          return
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 1500))
+        setAccountsMessage('Google sign-in timed out. Use the open link to continue or try again.')
+        return
+      } catch (error) {
+        setOauthStatus({ provider: 'google', status: 'failed', connectionId: null, error: error.message, authUrl: null })
+        setAccountsMessage(`Google connect failed: ${error.message}`)
+        return
       }
-
-      return
     }
 
     try {
       await connectProvider(provider)
+    } catch (error) {
+      setAccountsMessage(`${provider} connect failed: ${error.message}`)
     } finally {
       await refreshConnection()
     }
@@ -819,6 +854,7 @@ function App() {
           onTest={handleTestAccount}
           refreshing={refreshingConnection}
           oauthStatus={oauthStatus}
+          accountsMessage={accountsMessage}
         />
       ) : (
         <main className="layout app-layout-with-chat">

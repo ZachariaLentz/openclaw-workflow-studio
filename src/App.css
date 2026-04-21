@@ -493,6 +493,15 @@ select {
   border: 1px solid rgba(123, 145, 194, 0.2);
 }
 
+.account-banner {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(34, 48, 86, 0.96);
+  border: 1px solid rgba(123, 145, 194, 0.2);
+  color: #dfe9ff;
+}
+
 .accounts-page {
   display: grid;
   gap: 16px;
