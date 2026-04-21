@@ -800,6 +800,69 @@ select {
   margin-top: 10px;
 }
 
+.workflow-library-screen {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.library-toolbar {
+  display: grid;
+  gap: 14px;
+}
+
+.library-toolbar-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.workflow-library-card {
+  display: grid;
+  gap: 10px;
+}
+
+.workflow-card-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #a8b1c7;
+  font-size: 0.82rem;
+}
+
+.empty-library-state {
+  text-align: center;
+}
+
+.json-panel-content {
+  display: grid;
+  gap: 12px;
+}
+
+.validation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.validation-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+}
+
+.validation-item.error {
+  background: rgba(127, 29, 29, 0.32);
+  border: 1px solid rgba(248, 113, 113, 0.22);
+}
+
+.validation-item.warning {
+  background: rgba(120, 53, 15, 0.28);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+}
+
 @media (max-width: 1100px) {
   .workflow-bottom-grid {
     grid-template-columns: 1fr;
@@ -818,6 +881,10 @@ select {
 @media (max-width: 720px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .library-toolbar-row {
+    align-items: stretch;
   }
 
   .topbar {

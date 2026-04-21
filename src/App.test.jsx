@@ -1,22 +1,70 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { WORKFLOW_LIBRARY_STORAGE_KEY } from './lib/workflowLibrary'
+
+function jsonResponse(payload) {
+  return {
+    ok: true,
+    json: async () => payload,
+  }
+}
+
+function mockBridgeFetch() {
+  return vi.fn(async (url) => {
+    if (url.includes('/health')) {
+      return jsonResponse({ ok: true, service: 'bridge' })
+    }
+    if (url.includes('/api/status')) {
+      return jsonResponse({ ok: true, status: { runtime: 'local' } })
+    }
+    if (url.includes('/api/capabilities')) {
+      return jsonResponse({ ok: true, capabilities: {} })
+    }
+    if (url.includes('/api/accounts/providers')) {
+      return jsonResponse({ ok: true, providers: [] })
+    }
+    if (url.includes('/api/accounts')) {
+      return jsonResponse({ ok: true, accounts: [] })
+    }
+    if (url.includes('/api/socrates-chat')) {
+      return jsonResponse({
+        ok: true,
+        reply: 'Renamed the workflow and saved the patch.',
+        change: {
+          type: 'patch_workflow',
+          operations: [
+            { op: 'set', path: 'name', value: 'Children Story Flow v2' },
+            { op: 'set', path: 'description', value: 'Updated by Socrates.' },
+          ],
+        },
+      })
+    }
+    throw new Error(`Unhandled fetch URL: ${url}`)
+  })
+}
 
 describe('App', () => {
-  it('renders the mobile-first workflow library screen', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    vi.stubGlobal('fetch', mockBridgeFetch())
+  })
+
+  it('renders the workflow library with organization controls', async () => {
     render(<App />)
+
     expect(screen.getByText('Workflow Studio')).toBeInTheDocument()
-    expect(screen.getByText(/Build beautiful workflows that feel native on phone/i)).toBeInTheDocument()
-    expect(screen.getByText(/Tap one to open it full-screen/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New' })).toBeInTheDocument()
-    expect(screen.getAllByText(/Children’s Story: Manual Trigger/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Create a simple children’s story/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('textbox', { name: /Search workflows/i })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /Sort/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New workflow' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i })).toBeInTheDocument()
+    expect(screen.getByText(/1 saved/i)).toBeInTheDocument()
   })
 
   it('opens the workflow and allows a run even without a connected Google account', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Children’s Story: Manual Trigger/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
 
     const runButton = screen.getByRole('button', { name: 'Run' })
     expect(runButton).toBeEnabled()
@@ -25,11 +73,30 @@ describe('App', () => {
   it('opens the manual trigger node inspector from the canvas', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Children’s Story: Manual Trigger/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
     fireEvent.click(screen.getByRole('button', { name: /trigger manual trigger manual-trigger/i }))
 
     expect(await screen.findByText(/Run from this node/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Create story/i })).toBeInTheDocument()
     expect(screen.getByText(/Latest status: idle/i)).toBeInTheDocument()
+  })
+
+  it('applies a structured Socrates patch and persists it into the workflow library', async () => {
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Socrates' }))
+    fireEvent.change(screen.getByPlaceholderText(/Ask Socrates/i), { target: { value: 'Rename this workflow.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Socrates' }))
+
+    await screen.findByText(/Applied a structured patch/i)
+    expect(screen.getByText('Children Story Flow v2')).toBeInTheDocument()
+
+    await waitFor(() => {
+      const saved = JSON.parse(window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY))
+      expect(saved[0].name).toBe('Children Story Flow v2')
+      expect(saved[0].description).toBe('Updated by Socrates.')
+    })
   })
 })

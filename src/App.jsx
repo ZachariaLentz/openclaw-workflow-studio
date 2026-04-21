@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
-import { getInitialWorkflows, loadLocalConnectionState } from './lib/liveWorkflow'
+import { loadLocalConnectionState } from './lib/liveWorkflow'
 import { editStory, generateStoryIdea, saveFileToGoogleDrive, writeStory } from './lib/openclaw'
 import { sendToSocrates } from './lib/socrates'
+import { applySocratesChange } from './lib/socratesProtocol'
 import { createBlankWorkflow } from './lib/newWorkflow'
 import { connectGoogleAccount, connectProvider, getGoogleConnectionStatus, testAccount } from './lib/bridge'
 import { getCompatibleAccounts, getToolRequirements } from './lib/accounts'
 import { clearBridgeUrl, getDefaultBridgeUrl, getSavedBridgeUrl, saveBridgeUrl } from './lib/bridgeConfig'
+import { buildWorkflowLibraryView, loadWorkflowLibrary, touchWorkflowOpened, upsertWorkflowInLibrary } from './lib/workflowLibrary'
 
-const initialWorkflows = getInitialWorkflows()
+const initialWorkflows = loadWorkflowLibrary()
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 92
 const GRID_X = 220
@@ -54,6 +56,23 @@ function clampZoom(value) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
 }
 
+function resetCanvasState(setZoom, setPan) {
+  setZoom(1)
+  setPan({ x: 40, y: 24 })
+}
+
+function formatRelativeTime(value) {
+  if (!value) return 'Never'
+  const diff = new Date(value).getTime() - Date.now()
+  const minutes = Math.round(diff / 60000)
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute')
+  const hours = Math.round(minutes / 60)
+  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour')
+  const days = Math.round(hours / 24)
+  return formatter.format(days, 'day')
+}
+
 function BottomSheet({ open, title, subtitle, onClose, children, tall = false }) {
   return (
     <div className={`sheet-shell ${open ? 'open' : ''}`} aria-hidden={!open}>
@@ -73,29 +92,52 @@ function BottomSheet({ open, title, subtitle, onClose, children, tall = false })
   )
 }
 
-function WorkflowListScreen({ workflows, workflowIndex, onSelectWorkflow, onNewWorkflow }) {
+function WorkflowLibraryScreen({ libraryView, activeWorkflowId, onOpenWorkflow, onNewWorkflow, query, onQueryChange, sort, onSortChange }) {
   return (
-    <div className="workflow-list-screen">
+    <div className="workflow-library-screen">
       <div className="hero-phone-card">
         <div className="eyebrow">Workflow Studio</div>
-        <h1>Build beautiful workflows that feel native on phone.</h1>
-        <p>Choose a workflow and drop into a full-screen canvas. Everything else stays tucked behind sheets.</p>
+        <h1>Organize every saved workflow before you drop into the canvas.</h1>
+        <p>Search, sort, and reopen drafts instantly. Every valid edit persists locally, and Socrates can save updates straight into the library.</p>
       </div>
 
-      <div className="mobile-section-header row-between">
-        <div>
-          <div className="section-title">Workflows</div>
-          <div className="muted small-copy">Tap one to open it full-screen.</div>
+      <div className="library-toolbar panel">
+        <div className="library-toolbar-row">
+          <label className="field-label">
+            Search workflows
+            <input
+              className="text-input"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Name, app, tag, or node label"
+            />
+          </label>
+          <label className="field-label">
+            Sort
+            <select value={sort} onChange={(event) => onSortChange(event.target.value)}>
+              <option value="updated">Recently updated</option>
+              <option value="opened">Recently opened</option>
+              <option value="name">Name</option>
+            </select>
+          </label>
         </div>
-        <button className="primary-button" onClick={onNewWorkflow}>New</button>
+        <div className="library-toolbar-row">
+          <div className="hero-pills">
+            <span className="pill">{libraryView.stats.totalWorkflows} saved</span>
+            <span className="pill">{libraryView.stats.visibleWorkflows} visible</span>
+            <span className="pill">{libraryView.stats.totalNodes} total nodes</span>
+            <span className="pill">{libraryView.stats.uniqueTagCount} tags</span>
+          </div>
+          <button className="primary-button" onClick={onNewWorkflow}>New workflow</button>
+        </div>
       </div>
 
       <div className="workflow-phone-list">
-        {workflows.map((workflow, index) => (
+        {libraryView.items.map((workflow) => (
           <button
             key={workflow.id}
-            className={`workflow-phone-card ${workflowIndex === index ? 'selected' : ''}`}
-            onClick={() => onSelectWorkflow(index)}
+            className={`workflow-phone-card workflow-library-card ${activeWorkflowId === workflow.id ? 'selected' : ''}`}
+            onClick={() => onOpenWorkflow(workflow.id)}
           >
             <div className="workflow-phone-card-top row-between">
               <span className="pill">{workflow.appId}</span>
@@ -103,9 +145,25 @@ function WorkflowListScreen({ workflows, workflowIndex, onSelectWorkflow, onNewW
             </div>
             <div className="workflow-phone-title">{workflow.name}</div>
             <div className="muted small-copy">{workflow.description}</div>
+            <div className="workflow-card-meta">
+              <span>{workflow.nodes.length} nodes</span>
+              <span>{workflow.edges.length} edges</span>
+              <span>Updated {formatRelativeTime(workflow.metadata?.library?.updatedAt)}</span>
+            </div>
+            <div className="workflow-card-meta">
+              <span>Opened {formatRelativeTime(workflow.metadata?.library?.lastOpenedAt)}</span>
+              <span>{workflow.tags?.slice(0, 3).join(' · ') || 'No tags yet'}</span>
+            </div>
           </button>
         ))}
       </div>
+
+      {libraryView.items.length === 0 ? (
+        <div className="panel empty-library-state">
+          <div className="section-title">No matching workflows</div>
+          <div className="muted">Try a broader search or create a new workflow draft.</div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -224,6 +282,7 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
         <div className="hero-pills">
           <span className="pill">drag</span>
           <span className="pill">pinch</span>
+          <span className="pill">{workflow.nodes.length} nodes</span>
         </div>
         <span className="muted small-copy">{Math.round(zoom * 100)}%</span>
       </div>
@@ -448,7 +507,7 @@ function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
 
 function App() {
   const [workflows, setWorkflows] = useState(initialWorkflows)
-  const [workflowIndex, setWorkflowIndex] = useState(0)
+  const [activeWorkflowId, setActiveWorkflowId] = useState(initialWorkflows[0]?.id || '')
   const [workflowText, setWorkflowText] = useState(JSON.stringify(initialWorkflows[0], null, 2))
   const [selectedNodeId, setSelectedNodeId] = useState('')
   const [runState, setRunState] = useState(null)
@@ -468,11 +527,23 @@ function App() {
   const [oauthStatus, setOauthStatus] = useState(null)
   const [accountsMessage, setAccountsMessage] = useState('')
   const [bridgeUrlDraft, setBridgeUrlDraft] = useState(getSavedBridgeUrl())
+  const [libraryQuery, setLibraryQuery] = useState('')
+  const [librarySort, setLibrarySort] = useState('updated')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 40, y: 24 })
+  const workflowsRef = useRef(workflows)
+  const deferredQuery = useDeferredValue(libraryQuery)
+
+  useEffect(() => {
+    workflowsRef.current = workflows
+  }, [workflows])
 
   const parsedResult = useMemo(() => {
-    try { return { workflow: JSON.parse(workflowText), error: '' } } catch (error) { return { workflow: null, error: error.message } }
+    try {
+      return { workflow: JSON.parse(workflowText), error: '' }
+    } catch (error) {
+      return { workflow: null, error: error.message }
+    }
   }, [workflowText])
 
   const parsedWorkflow = parsedResult.workflow
@@ -494,6 +565,10 @@ function App() {
   const selectedNode = parsedWorkflow?.nodes?.find((node) => node.id === selectedNodeId)
   const selectedTool = parsedWorkflow?.tools?.find((tool) => tool.id === selectedNode?.toolId)
   const defaultTriggerNodeId = parsedWorkflow?.entryNodeId ?? parsedWorkflow?.nodes?.find((node) => node.type === 'trigger')?.id
+  const libraryView = useMemo(
+    () => buildWorkflowLibraryView(workflows, { query: deferredQuery, sort: librarySort }),
+    [workflows, deferredQuery, librarySort],
+  )
 
   useEffect(() => {
     if (parsedWorkflow?.nodes?.length && !parsedWorkflow.nodes.some((node) => node.id === selectedNodeId)) setSelectedNodeId('')
@@ -508,9 +583,37 @@ function App() {
     refreshConnection()
   }, [])
 
+  useEffect(() => {
+    if (!parsedWorkflow || !validation.ok || activeView !== 'canvas') return undefined
+    const timeoutId = window.setTimeout(() => {
+      persistWorkflow(parsedWorkflow, { syncText: false })
+    }, 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [parsedWorkflow, validation.ok, activeView])
+
+  function getWorkflowFromLibrary(workflowId, source = workflowsRef.current) {
+    return source.find((workflow) => workflow.id === workflowId) || source[0] || null
+  }
+
+  function persistWorkflow(nextWorkflow, options = {}) {
+    const nextLibrary = upsertWorkflowInLibrary(workflowsRef.current, nextWorkflow, { touchOpenedAt: options.touchOpenedAt })
+    workflowsRef.current = nextLibrary
+    setWorkflows(nextLibrary)
+    const savedWorkflow = getWorkflowFromLibrary(nextWorkflow.id, nextLibrary)
+    setActiveWorkflowId(savedWorkflow?.id || '')
+    if (options.syncText !== false && savedWorkflow) {
+      setWorkflowText(JSON.stringify(savedWorkflow, null, 2))
+    }
+    return savedWorkflow
+  }
+
   async function refreshConnection() {
     setRefreshingConnection(true)
-    try { setConnection(await loadLocalConnectionState()) } finally { setRefreshingConnection(false) }
+    try {
+      setConnection(await loadLocalConnectionState())
+    } finally {
+      setRefreshingConnection(false)
+    }
   }
 
   function saveBridgeTarget() {
@@ -527,32 +630,32 @@ function App() {
     refreshConnection()
   }
 
-  function loadWorkflow(index) {
-    const workflow = workflows[index]
-    setWorkflowIndex(index)
+  function loadWorkflow(workflowId) {
+    const nextLibrary = touchWorkflowOpened(workflowsRef.current, workflowId)
+    workflowsRef.current = nextLibrary
+    setWorkflows(nextLibrary)
+    const workflow = getWorkflowFromLibrary(workflowId, nextLibrary)
+    if (!workflow) return
+    setActiveWorkflowId(workflow.id)
     setWorkflowText(JSON.stringify(workflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
-    setSocratesMessages([])
     setJsonPanelOpen(false)
-    setZoom(1)
-    setPan({ x: 40, y: 24 })
+    resetCanvasState(setZoom, setPan)
     setActiveView('canvas')
   }
 
   function handleNewWorkflow() {
     const nextWorkflow = createBlankWorkflow()
-    setWorkflows((current) => [...current, nextWorkflow])
-    const nextIndex = workflows.length
-    setWorkflowIndex(nextIndex)
-    setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
+    const savedWorkflow = persistWorkflow(nextWorkflow, { touchOpenedAt: true })
+    if (!savedWorkflow) return
+    setWorkflowText(JSON.stringify(savedWorkflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
-    setSocratesMessages([{ role: 'assistant', text: 'New workflow created. Ask Socrates to shape the first real version.' }])
+    setSocratesMessages([{ role: 'assistant', text: 'New workflow created and saved locally. Ask Socrates to return a structured draft or patch.' }])
     setSocratesOpen(true)
     setJsonPanelOpen(false)
-    setZoom(1)
-    setPan({ x: 40, y: 24 })
+    resetCanvasState(setZoom, setPan)
     setActiveView('canvas')
   }
 
@@ -565,8 +668,16 @@ function App() {
     if (!parsedWorkflow || !selectedNodeId) return
     const currentNode = parsedWorkflow.nodes.find((node) => node.id === selectedNodeId)
     if (!currentNode) return
-    const patchedNode = { ...currentNode, ...patch, config: patch.config ? patch.config : currentNode.config }
-    const nextWorkflow = { ...parsedWorkflow, nodes: parsedWorkflow.nodes.map((node) => (node.id === selectedNodeId ? patchedNode : node)) }
+    const patchedNode = {
+      ...currentNode,
+      ...patch,
+      config: patch.config ? { ...(currentNode.config || {}), ...patch.config } : currentNode.config,
+    }
+    const nextWorkflow = {
+      ...parsedWorkflow,
+      nodes: parsedWorkflow.nodes.map((node) => (node.id === selectedNodeId ? patchedNode : node)),
+    }
+    persistWorkflow(nextWorkflow, { syncText: false })
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
   }
 
@@ -588,15 +699,22 @@ function App() {
     }
   }
 
-  async function handleSendToSocrates(currentWorkflowText) {
+  async function handleSendToSocrates() {
     const text = socratesDraft.trim()
-    if (!text) return
+    if (!text || !parsedWorkflow) return
     setSendingToSocrates(true)
     setSocratesMessages((current) => [...current, { role: 'user', text }])
     setSocratesDraft('')
     try {
-      const result = await sendToSocrates(text, currentWorkflowText)
-      setSocratesMessages((current) => [...current, { role: 'assistant', text: result.reply }])
+      const result = await sendToSocrates(text, parsedWorkflow)
+      let assistantText = result.reply || 'Socrates responded without a summary.'
+      if (result.change?.type && result.change.type !== 'none') {
+        const nextWorkflow = applySocratesChange(parsedWorkflow, result.change)
+        persistWorkflow(nextWorkflow, { touchOpenedAt: true })
+        setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
+        assistantText = `${assistantText}\n\nApplied ${result.change.type === 'replace_workflow' ? 'a full workflow draft' : 'a structured patch'} and saved it to your workflow library.`
+      }
+      setSocratesMessages((current) => [...current, { role: 'assistant', text: assistantText }])
     } catch (error) {
       setSocratesMessages((current) => [...current, { role: 'assistant', text: `Socrates unavailable: ${error.message}` }])
     } finally {
@@ -638,7 +756,13 @@ function App() {
         return
       }
     }
-    try { await connectProvider(provider) } catch (error) { setAccountsMessage(`${provider} connect failed: ${error.message}`) } finally { await refreshConnection() }
+    try {
+      await connectProvider(provider)
+    } catch (error) {
+      setAccountsMessage(`${provider} connect failed: ${error.message}`)
+    } finally {
+      await refreshConnection()
+    }
   }
 
   async function handleTestAccount(accountId) {
@@ -649,14 +773,23 @@ function App() {
   return (
     <div className="app-shell phone-app-shell">
       {activeView === 'library' ? (
-        <WorkflowListScreen workflows={workflows} workflowIndex={workflowIndex} onSelectWorkflow={loadWorkflow} onNewWorkflow={handleNewWorkflow} />
+        <WorkflowLibraryScreen
+          libraryView={libraryView}
+          activeWorkflowId={activeWorkflowId}
+          onOpenWorkflow={loadWorkflow}
+          onNewWorkflow={handleNewWorkflow}
+          query={libraryQuery}
+          onQueryChange={setLibraryQuery}
+          sort={librarySort}
+          onSortChange={setLibrarySort}
+        />
       ) : (
         <div className="mobile-canvas-screen">
           <header className="phone-topbar">
-            <button className="secondary-button" onClick={() => setActiveView('library')}>Back</button>
+            <button className="secondary-button" onClick={() => setActiveView('library')}>Library</button>
             <div className="phone-topbar-center">
               <div className="phone-topbar-title">{parsedWorkflow?.name ?? 'Workflow'}</div>
-              <div className="muted small-copy">{parsedWorkflow?.appId ?? 'unknown app'}</div>
+              <div className="muted small-copy">{parsedWorkflow?.appId ?? 'unknown app'} · saved locally</div>
             </div>
             <div className="phone-topbar-actions">
               <button className="primary-button" onClick={() => handleRun(defaultTriggerNodeId)} disabled={running || !defaultTriggerNodeId || !validation.ok}>{running ? 'Running…' : 'Run'}</button>
@@ -682,7 +815,7 @@ function App() {
           <button className="workflow-phone-card" onClick={() => { setSocratesOpen(true); setMenuSheetOpen(false) }}>Open Socrates</button>
           <button className="workflow-phone-card" onClick={() => { setJsonPanelOpen(true); setMenuSheetOpen(false) }}>Open workflow JSON</button>
           <button className="workflow-phone-card" onClick={() => { setAccountsSheetOpen(true); setMenuSheetOpen(false) }}>Accounts & bridge</button>
-          <button className="workflow-phone-card" onClick={() => { setZoom(1); setPan({ x: 40, y: 24 }); setMenuSheetOpen(false) }}>Reset canvas view</button>
+          <button className="workflow-phone-card" onClick={() => { resetCanvasState(setZoom, setPan); setMenuSheetOpen(false) }}>Reset canvas view</button>
         </div>
       </BottomSheet>
 
@@ -705,17 +838,21 @@ function App() {
       </BottomSheet>
 
       <BottomSheet open={jsonPanelOpen} onClose={() => setJsonPanelOpen(false)} title="Workflow JSON" subtitle={validation.ok ? 'Valid workflow' : 'Validation issues present'} tall>
-        <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
+        <div className="json-panel-content">
+          <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
+          {!validation.ok ? <div className="validation-list">{validation.errors.map((issue) => <div key={`${issue.path}-${issue.message}`} className="validation-item error">{issue.path}: {issue.message}</div>)}</div> : null}
+          {validation.warnings.length > 0 ? <div className="validation-list">{validation.warnings.map((issue) => <div key={`${issue.path}-${issue.message}`} className="validation-item warning">{issue.path}: {issue.message}</div>)}</div> : null}
+        </div>
       </BottomSheet>
 
-      <BottomSheet open={socratesOpen} onClose={() => setSocratesOpen(false)} title="Socrates" subtitle={connection.connected ? 'Authoring chat via reachable bridge' : 'Bridge required for live Socrates chat'} tall>
+      <BottomSheet open={socratesOpen} onClose={() => setSocratesOpen(false)} title="Socrates" subtitle={connection.connected ? 'Structured authoring via reachable bridge' : 'Bridge required for live Socrates chat'} tall>
         <div className="socrates-panel">
           <div className="chat-log">
-            {socratesMessages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow.</div> : null}
+            {socratesMessages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow. Valid drafts or patches are applied and saved automatically.</div> : null}
             {socratesMessages.map((item, index) => <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}><strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong><div>{item.text}</div></div>)}
           </div>
-          <textarea className="chat-input" value={socratesDraft} onChange={(event) => setSocratesDraft(event.target.value)} placeholder="Ask Socrates to create a workflow, adjust steps, or explain the next change." spellCheck="false" />
-          <div className="row-between"><span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span><button className="primary-button" disabled={sendingToSocrates || !connection.connected || !socratesDraft.trim()} onClick={() => handleSendToSocrates(workflowText)}>{sendingToSocrates ? 'Sending…' : 'Send to Socrates'}</button></div>
+          <textarea className="chat-input" value={socratesDraft} onChange={(event) => setSocratesDraft(event.target.value)} placeholder="Ask Socrates to create a workflow, add nodes, rename steps, or patch the current draft." spellCheck="false" />
+          <div className="row-between"><span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span><button className="primary-button" disabled={sendingToSocrates || !connection.connected || !socratesDraft.trim() || !parsedWorkflow} onClick={handleSendToSocrates}>{sendingToSocrates ? 'Sending…' : 'Send to Socrates'}</button></div>
         </div>
       </BottomSheet>
     </div>

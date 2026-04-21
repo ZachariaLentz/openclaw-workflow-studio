@@ -481,6 +481,80 @@ function parseStatusCard(stdout) {
   }
 }
 
+function extractJsonObject(text) {
+  const trimmed = String(text || '').trim()
+  if (!trimmed) return null
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed
+  const firstBrace = candidate.indexOf('{')
+  if (firstBrace === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = firstBrace; index < candidate.length; index += 1) {
+    const char = candidate[index]
+
+    if (escaped) {
+      escaped = false
+      continue
+    }
+
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (char === '{') depth += 1
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return candidate.slice(firstBrace, index + 1)
+      }
+    }
+  }
+
+  return null
+}
+
+function normalizeSocratesChange(change) {
+  if (!change || typeof change !== 'object') return { type: 'none' }
+  if (!change.type) return { type: 'none' }
+  if (change.type === 'replace_workflow' && change.workflow) return change
+  if (change.type === 'patch_workflow' && Array.isArray(change.operations)) return change
+  if (change.type === 'none') return { type: 'none' }
+  return { type: 'none' }
+}
+
+function parseSocratesStructuredOutput(raw) {
+  const fallback = {
+    reply: String(raw || '').trim() || 'Socrates did not return structured output.',
+    change: { type: 'none' },
+  }
+
+  const jsonText = extractJsonObject(raw)
+  if (!jsonText) return fallback
+
+  try {
+    const parsed = JSON.parse(jsonText)
+    return {
+      reply: String(parsed.reply || '').trim() || fallback.reply,
+      change: normalizeSocratesChange(parsed.change),
+    }
+  } catch {
+    return fallback
+  }
+}
+
 async function readJsonBody(req) {
   let body = ''
   for await (const chunk of req) body += chunk
@@ -509,12 +583,27 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/socrates-chat') {
       const parsedBody = await readJsonBody(req)
       const message = parsedBody.message || 'Help shape this workflow.'
-      const workflowText = parsedBody.workflowText || ''
+      const workflow = parsedBody.workflow || null
+      const workflowText = workflow ? JSON.stringify(workflow, null, 2) : '{}'
       const prompt = [
         'You are Socrates, the workflow authoring agent for OpenClaw Workflow Studio.',
-        'Help the user shape or edit the workflow shown below.',
-        'Be concise, concrete, and helpful.',
-        'If suggesting a workflow change, describe the smallest good next change.',
+        'Return strict JSON only. Do not add markdown fences or any prose outside the JSON object.',
+        'JSON schema:',
+        JSON.stringify({
+          reply: 'string',
+          change: {
+            type: '"none" | "replace_workflow" | "patch_workflow"',
+            workflow: 'required when type=replace_workflow',
+            operations: [
+              {
+                op: '"set" | "remove" | "upsert_node" | "remove_node" | "upsert_edge" | "remove_edge" | "upsert_tool" | "remove_tool"',
+              },
+            ],
+          },
+        }, null, 2),
+        'Prefer patch_workflow for local edits and replace_workflow for broad rewrites.',
+        'Any workflow you return must remain internally consistent: valid node ids, valid edge endpoints, and a real entryNodeId.',
+        'Be concise in reply. The app will deterministically apply the returned change.',
         'Current workflow JSON:',
         workflowText,
         'User request:',
@@ -539,10 +628,15 @@ const server = http.createServer(async (req, res) => {
         },
       )
 
+      const raw = stdout?.trim() ?? ''
+      const structured = parseSocratesStructuredOutput(raw)
+
       sendJson(res, 200, {
         ok: true,
         source: 'openclaw agent --agent socrates',
-        reply: stdout?.trim() ?? '',
+        reply: structured.reply,
+        change: structured.change,
+        raw,
         session: 'agent:socrates:main',
       })
       return
