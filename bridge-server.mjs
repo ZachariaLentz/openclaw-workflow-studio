@@ -15,7 +15,8 @@ const LOCAL_DIR = path.join(process.cwd(), '.local')
 const OAUTH_DIR = path.join(LOCAL_DIR, 'oauth')
 const GOOGLE_OAUTH_CONFIG_PATH = process.env.OCWS_GOOGLE_OAUTH_CONFIG || path.join(OAUTH_DIR, 'google-client.json')
 const GOOGLE_TOKENS_PATH = process.env.OCWS_GOOGLE_TOKENS_PATH || path.join(OAUTH_DIR, 'google-tokens.json')
-const GOOGLE_REDIRECT_URI = process.env.OCWS_GOOGLE_REDIRECT_URI || `http://${HOST}:${PORT}/oauth/google/callback`
+const PUBLIC_BASE_URL = process.env.OCWS_PUBLIC_BASE_URL || `http://${HOST}:${PORT}`
+const GOOGLE_REDIRECT_URI = process.env.OCWS_GOOGLE_REDIRECT_URI || `${PUBLIC_BASE_URL.replace(/\/$/, '')}/oauth/google/callback`
 const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email profile'
 const oauthConnections = new Map()
 
