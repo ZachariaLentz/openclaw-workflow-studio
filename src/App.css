@@ -459,6 +459,11 @@ button {
   background: linear-gradient(180deg, rgba(33, 65, 49, 0.92), rgba(19, 28, 50, 0.92));
 }
 
+.failure-surface {
+  border-color: rgba(252, 165, 165, 0.35);
+  background: linear-gradient(180deg, rgba(84, 32, 45, 0.92), rgba(19, 28, 50, 0.92));
+}
+
 .story-preview {
   margin-top: 16px;
   padding: 12px;

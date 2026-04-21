@@ -61,20 +61,78 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
   const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node]))
   const surfaceRef = useRef(null)
   const dragRef = useRef(null)
+  const pinchRef = useRef(null)
+
+  function getDistance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y)
+  }
 
   function beginPan(event) {
     if (event.target.closest('.diagram-node')) return
-    dragRef.current = {
-      x: event.clientX,
-      y: event.clientY,
-      panX: pan.x,
-      panY: pan.y,
+
+    const surface = surfaceRef.current
+    if (!surface) return
+
+    surface.setPointerCapture?.(event.pointerId)
+
+    if (!dragRef.current) {
+      dragRef.current = { pointers: new Map() }
     }
-    event.currentTarget.setPointerCapture?.(event.pointerId)
+
+    dragRef.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+    if (dragRef.current.pointers.size === 1) {
+      dragRef.current = {
+        ...dragRef.current,
+        x: event.clientX,
+        y: event.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      }
+      pinchRef.current = null
+      return
+    }
+
+    if (dragRef.current.pointers.size === 2) {
+      const [first, second] = [...dragRef.current.pointers.values()]
+      pinchRef.current = {
+        distance: getDistance(first, second),
+        zoom,
+        panX: pan.x,
+        panY: pan.y,
+        centerX: (first.x + second.x) / 2,
+        centerY: (first.y + second.y) / 2,
+      }
+    }
   }
 
   function movePan(event) {
-    if (!dragRef.current) return
+    if (!dragRef.current?.pointers) return
+    dragRef.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+    if (dragRef.current.pointers.size === 2 && pinchRef.current) {
+      const [first, second] = [...dragRef.current.pointers.values()]
+      const distance = getDistance(first, second)
+      const centerX = (first.x + second.x) / 2
+      const centerY = (first.y + second.y) / 2
+      const surface = surfaceRef.current
+      if (!surface) return
+      const rect = surface.getBoundingClientRect()
+      const pointerX = centerX - rect.left
+      const pointerY = centerY - rect.top
+      const nextZoom = clampZoom(pinchRef.current.zoom * (distance / Math.max(1, pinchRef.current.distance)))
+      const worldX = (pointerX - pinchRef.current.panX) / pinchRef.current.zoom
+      const worldY = (pointerY - pinchRef.current.panY) / pinchRef.current.zoom
+      onZoomChange(nextZoom)
+      onPanChange({
+        x: pointerX - worldX * nextZoom,
+        y: pointerY - worldY * nextZoom,
+      })
+      return
+    }
+
+    if (dragRef.current.pointers.size !== 1 || pinchRef.current) return
+
     const deltaX = event.clientX - dragRef.current.x
     const deltaY = event.clientY - dragRef.current.y
     onPanChange({
@@ -84,9 +142,29 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
   }
 
   function endPan(event) {
-    if (!dragRef.current) return
-    dragRef.current = null
-    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    const surface = surfaceRef.current
+    surface?.releasePointerCapture?.(event.pointerId)
+
+    if (!dragRef.current?.pointers) return
+    dragRef.current.pointers.delete(event.pointerId)
+
+    if (dragRef.current.pointers.size === 0) {
+      dragRef.current = null
+      pinchRef.current = null
+      return
+    }
+
+    if (dragRef.current.pointers.size === 1) {
+      const remaining = [...dragRef.current.pointers.values()][0]
+      dragRef.current = {
+        pointers: dragRef.current.pointers,
+        x: remaining.x,
+        y: remaining.y,
+        panX: pan.x,
+        panY: pan.y,
+      }
+      pinchRef.current = null
+    }
   }
 
   function handleWheel(event) {
@@ -574,6 +652,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
 function RunPanel({ runState, running, onRun, defaultTriggerNodeId, open, onToggle }) {
   const downloadOutput = runState?.nodeOutputs?.['download-file']
   const storyOutput = runState?.nodeOutputs?.['prompt-edit-story'] || runState?.nodeOutputs?.['prompt-write-story']
+  const failureEvent = runState?.events?.findLast?.((event) => event.type === 'node-failed' || event.type === 'error')
 
   return (
     <div className={`run-activity-shell ${open ? 'open' : ''}`}>
@@ -588,6 +667,15 @@ function RunPanel({ runState, running, onRun, defaultTriggerNodeId, open, onTogg
           </div>
         </div>
         <div className="muted">Run activity stays tucked away until needed, then rolls down when the workflow is active.</div>
+
+        {failureEvent ? (
+          <div className="run-result-card failure-surface">
+            <div>
+              <strong>Run failed</strong>
+              <div className="muted small-copy">{failureEvent.message || 'Unknown workflow error'}</div>
+            </div>
+          </div>
+        ) : null}
 
         {downloadOutput?.downloadUrl ? (
           <div className="run-result-card success-surface">
