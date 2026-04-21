@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { WORKFLOW_LIBRARY_STORAGE_KEY } from './lib/workflowLibrary'
@@ -61,34 +61,40 @@ describe('App', () => {
     expect(screen.getByText(/1 saved/i)).toBeInTheDocument()
   })
 
-  it('opens the workflow and allows a run even without a connected Google account', async () => {
+  it('opens the workflow into a mobile workspace with persistent tabs', async () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
 
-    const runButton = screen.getByRole('button', { name: 'Run' })
-    expect(runButton).toBeEnabled()
+    expect(screen.getAllByRole('button', { name: 'Run' })[0]).toBeEnabled()
+    const workspaceNav = screen.getByRole('navigation', { name: /Workflow workspace navigation/i })
+    expect(workspaceNav).toBeInTheDocument()
+    expect(within(workspaceNav).getByRole('button', { name: 'Canvas' })).toBeInTheDocument()
+    expect(within(workspaceNav).getByRole('button', { name: 'Run', pressed: false })).toBeInTheDocument()
   })
 
-  it('opens the manual trigger node inspector from the canvas', async () => {
+  it('opens the manual trigger node inspector from the canvas and can jump to the full node workspace', async () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
     fireEvent.click(screen.getByRole('button', { name: /trigger manual trigger manual-trigger/i }))
 
-    expect(await screen.findByText(/Run from this node/i)).toBeInTheDocument()
+    expect(screen.getByText(/Run from this node/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Create story/i })).toBeInTheDocument()
-    expect(screen.getByText(/Latest status: idle/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' }).at(-1))
+
+    expect(await screen.findByText(/Node details/i)).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('Manual Trigger').length).toBeGreaterThan(0)
   })
 
   it('applies a structured Socrates patch and persists it into the workflow library', async () => {
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open Socrates' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Socrates' })[0])
     fireEvent.change(screen.getByPlaceholderText(/Ask Socrates/i), { target: { value: 'Rename this workflow.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send to Socrates' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await screen.findByText(/Applied a structured patch/i)
     expect(screen.getByText('Children Story Flow v2')).toBeInTheDocument()

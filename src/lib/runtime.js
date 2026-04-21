@@ -68,7 +68,7 @@ function buildFileName(template, title) {
   return (template || '{{title}}.txt').replace('{{title}}', baseName)
 }
 
-function toDownloadUrl({ fileName, content, contentType }) {
+function toDownloadUrl({ content, contentType }) {
   const blob = new Blob([content], { type: contentType || 'text/plain' })
   return URL.createObjectURL(blob)
 }

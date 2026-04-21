@@ -97,8 +97,7 @@ function WorkflowLibraryScreen({ libraryView, activeWorkflowId, onOpenWorkflow, 
     <div className="workflow-library-screen">
       <div className="hero-phone-card">
         <div className="eyebrow">Workflow Studio</div>
-        <h1>Organize every saved workflow before you drop into the canvas.</h1>
-        <p>Search, sort, and reopen drafts instantly. Every valid edit persists locally, and Socrates can save updates straight into the library.</p>
+        <h1>Workflows</h1>
       </div>
 
       <div className="library-toolbar panel">
@@ -160,8 +159,7 @@ function WorkflowLibraryScreen({ libraryView, activeWorkflowId, onOpenWorkflow, 
 
       {libraryView.items.length === 0 ? (
         <div className="panel empty-library-state">
-          <div className="section-title">No matching workflows</div>
-          <div className="muted">Try a broader search or create a new workflow draft.</div>
+          <div className="section-title">No workflows found</div>
         </div>
       ) : null}
     </div>
@@ -249,32 +247,25 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
     }
   }
 
-  function handleWheel(event) {
-    event.preventDefault()
-    const surface = surfaceRef.current
-    if (!surface) return
-    const rect = surface.getBoundingClientRect()
-    const pointerX = event.clientX - rect.left
-    const pointerY = event.clientY - rect.top
-    const zoomFactor = event.deltaY < 0 ? 1.08 : 0.92
-    const nextZoom = clampZoom(zoom * zoomFactor)
-    if (nextZoom === zoom) return
-    const worldX = (pointerX - pan.x) / zoom
-    const worldY = (pointerY - pan.y) / zoom
-    onZoomChange(nextZoom)
-    onPanChange({ x: pointerX - worldX * nextZoom, y: pointerY - worldY * nextZoom })
-  }
-
   useEffect(() => {
     const surface = surfaceRef.current
     if (!surface) return undefined
     const listener = (event) => {
       event.preventDefault()
-      handleWheel(event)
+      const rect = surface.getBoundingClientRect()
+      const pointerX = event.clientX - rect.left
+      const pointerY = event.clientY - rect.top
+      const zoomFactor = event.deltaY < 0 ? 1.08 : 0.92
+      const nextZoom = clampZoom(zoom * zoomFactor)
+      if (nextZoom === zoom) return
+      const worldX = (pointerX - pan.x) / zoom
+      const worldY = (pointerY - pan.y) / zoom
+      onZoomChange(nextZoom)
+      onPanChange({ x: pointerX - worldX * nextZoom, y: pointerY - worldY * nextZoom })
     }
     surface.addEventListener('wheel', listener, { passive: false })
     return () => surface.removeEventListener('wheel', listener)
-  }, [zoom, pan])
+  }, [zoom, pan, onPanChange, onZoomChange])
 
   return (
     <div className="graph-phone-stage">
@@ -342,7 +333,6 @@ function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refr
     <div className="accounts-page">
       <div className="panel">
         <div className="section-title">Accounts</div>
-        <div className="muted">Connect the services your workflows use.</div>
         {accountsMessage ? <div className="account-banner">{accountsMessage}</div> : null}
       </div>
       <div className="accounts-grid">
@@ -426,10 +416,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
 
       {canTrigger ? (
         <div className="node-action-card">
-          <div>
-            <strong>Run from this node</strong>
-            <div className="muted small-copy">Trigger directly from the inspector.</div>
-          </div>
+          <strong>Run from this node</strong>
           <button className="primary-button" onClick={() => onRunTrigger(node.id)}>{node.config?.triggerLabel ?? 'Start workflow'}</button>
         </div>
       ) : null}
@@ -505,6 +492,243 @@ function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
   )
 }
 
+function NodeSelectionList({ workflow, selectedNodeId, onSelectNode }) {
+  return (
+    <div className="node-picker-list">
+      {workflow.nodes.map((node) => (
+        <button
+          key={node.id}
+          className={`workflow-phone-card node-picker-card ${selectedNodeId === node.id ? 'selected' : ''}`}
+          onClick={() => onSelectNode(node.id)}
+        >
+          <div className="workflow-phone-card-top row-between">
+            <span className="pill">{node.type}</span>
+            <span className="muted small-copy">{node.toolId || 'no tool'}</span>
+          </div>
+          <div className="workflow-phone-title">{node.label}</div>
+          <div className="muted small-copy">{node.description || 'No description yet.'}</div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function WorkspaceTabBar({ activeTab, selectedNodeId, onChange }) {
+  const primaryTabs = [
+    { id: 'canvas', label: 'Canvas' },
+    { id: 'node', label: selectedNodeId ? 'Node' : 'Nodes' },
+    { id: 'run', label: 'Run' },
+  ]
+
+  const utilityTabs = [
+    { id: 'socrates', label: 'Socrates' },
+    { id: 'settings', label: 'Settings' },
+  ]
+
+  return (
+    <div className="workspace-nav-stack">
+      <nav className="workspace-tabbar" aria-label="Workflow workspace navigation">
+        {primaryTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
+            aria-pressed={activeTab === tab.id}
+            onClick={() => onChange(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+      <div className="workspace-utility-row" aria-label="Authoring and settings shortcuts">
+        {utilityTabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`utility-chip ${activeTab === tab.id ? 'active' : ''}`}
+            aria-pressed={activeTab === tab.id}
+            onClick={() => onChange(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WorkspaceHeader({ workflow, validation, selectedNode, running, onBackToLibrary, onRun, onOpenJson, onJumpToTab }) {
+  return (
+    <header className="phone-topbar sticky-workspace-header">
+      <div className="workspace-header-primary">
+        <button className="secondary-button" onClick={onBackToLibrary}>Library</button>
+        <div className="phone-topbar-center">
+          <div className="phone-topbar-title">{workflow?.name ?? 'Workflow'}</div>
+          <div className="muted small-copy">{workflow?.appId ?? 'unknown app'}</div>
+        </div>
+      </div>
+
+      <div className="workspace-header-summary panel premium-summary-card">
+        <div className="workflow-phone-card-top row-between">
+          <div className="section-title header-title-row">Workspace</div>
+          <div className="hero-pills">
+            <span className={`pill ${validation.ok ? 'status-healthy' : 'status-risk'}`}>{validation.ok ? 'Valid draft' : `${validation.errors.length} issue${validation.errors.length === 1 ? '' : 's'}`}</span>
+            <span className="pill">{workflow?.nodes?.length || 0} nodes</span>
+            <span className="pill">{workflow?.edges?.length || 0} edges</span>
+            {selectedNode ? <span className="pill">{selectedNode.label}</span> : null}
+          </div>
+        </div>
+        <div className="workspace-quick-actions workspace-primary-actions">
+          <button className="primary-button hero-action" onClick={onRun} disabled={running || !validation.ok}>{running ? 'Running…' : 'Run'}</button>
+          <button className="secondary-button" onClick={() => onJumpToTab('node')}>{selectedNode ? 'Edit node' : 'Nodes'}</button>
+          <button className="secondary-button" onClick={onOpenJson}>JSON</button>
+        </div>
+        <div className="workspace-secondary-links">
+          <button className="tertiary-button" onClick={() => onJumpToTab('socrates')}>Socrates</button>
+          <button className="tertiary-button" onClick={() => onJumpToTab('settings')}>Settings</button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function WorkspaceCanvasScreen({ workflow, selectedNode, selectedNodeId, onSelectNode, onOpenNodeWorkspace, onOpenRunWorkspace, zoom, pan, onPanChange, onZoomChange, runState }) {
+  return (
+    <div className="workspace-screen-stack">
+      <div className="panel workspace-summary-panel quiet-surface">
+        <div className="workflow-phone-card-top row-between">
+          <div className="section-title">Canvas</div>
+          <div className="hero-pills">
+            <span className="pill">{workflow.nodes.length} nodes</span>
+            <span className="pill">{workflow.edges.length} edges</span>
+          </div>
+        </div>
+        <div className="workspace-quick-actions compact-actions">
+          <button className="secondary-button" onClick={onOpenNodeWorkspace}>{selectedNodeId ? 'Edit node' : 'Nodes'}</button>
+          <button className="secondary-button" onClick={onOpenRunWorkspace}>Run</button>
+        </div>
+      </div>
+
+      <GraphView workflow={workflow} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} zoom={zoom} pan={pan} onPanChange={onPanChange} onZoomChange={onZoomChange} />
+
+      {selectedNode ? (
+        <div className="panel canvas-selection-panel quiet-surface">
+          <div className="workflow-phone-card-top row-between">
+            <div>
+              <div className="section-title">Selected node</div>
+              <div className="muted small-copy">{selectedNode.type} · {selectedNode.toolId || 'No tool'}</div>
+            </div>
+            <button className="primary-button" onClick={onOpenNodeWorkspace}>Edit</button>
+          </div>
+          <div className="workflow-phone-title compact">{selectedNode.label}</div>
+          <div className="muted small-copy">{selectedNode.description || 'No description yet.'}</div>
+          {runState?.nodeStatus?.[selectedNode.id] ? <div className="hero-pills"><span className={`pill state-pill state-${runState.nodeStatus[selectedNode.id]}`}>{runState.nodeStatus[selectedNode.id]}</span></div> : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function WorkspaceNodeScreen({ workflow, selectedNode, selectedTool, selectedNodeId, onSelectNode, ...panelProps }) {
+  return (
+    <div className="workspace-screen-stack">
+      <div className="panel workspace-section-intro quiet-surface">
+        <div className="section-title">Node details</div>
+      </div>
+
+      {!selectedNode ? (
+        <div className="panel empty-library-state">
+          <div className="section-title">Pick a node</div>
+        </div>
+      ) : (
+        <div className="panel workspace-node-panel">
+          <NodeDetailPanel node={selectedNode} tool={selectedTool} workflow={workflow} {...panelProps} />
+        </div>
+      )}
+
+      <NodeSelectionList workflow={workflow} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />
+    </div>
+  )
+}
+
+function WorkspaceSocratesScreen({ connection, socratesMessages, socratesDraft, onSocratesDraftChange, onSendToSocrates, sendingToSocrates }) {
+  const suggestionPrompts = [
+    'Add error handling and a fallback branch.',
+    'Rename the workflow and tighten every node label.',
+    'Insert a review step before the final output.',
+    'Turn this into a reusable template for another app.',
+  ]
+
+  return (
+    <div className="workspace-screen-stack">
+      <div className="panel workspace-section-intro quiet-surface">
+        <div className="section-title">Socrates</div>
+      </div>
+
+      <div className="panel">
+        <div className="socrates-panel workspace-socrates-panel">
+          <div className="socrates-suggestion-row">
+            {suggestionPrompts.map((prompt) => (
+              <button key={prompt} className="secondary-button suggestion-chip" onClick={() => onSocratesDraftChange(prompt)}>{prompt}</button>
+            ))}
+          </div>
+          <div className="chat-log">
+            {socratesMessages.length === 0 ? <div className="muted">No messages yet.</div> : null}
+            {socratesMessages.map((item, index) => <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}><strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong><div>{item.text}</div></div>)}
+          </div>
+          <textarea className="chat-input" value={socratesDraft} onChange={(event) => onSocratesDraftChange(event.target.value)} placeholder="Ask Socrates…" spellCheck="false" />
+          <div className="row-between workspace-footer-row"><span className="muted small-copy">{connection.connected ? 'Bridge connected' : 'Bridge required'}</span><button className="primary-button" disabled={sendingToSocrates || !connection.connected || !socratesDraft.trim()} onClick={onSendToSocrates}>{sendingToSocrates ? 'Sending…' : 'Send'}</button></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EventTimeline({ events = [] }) {
+  const recentEvents = [...events].slice(-8).reverse()
+  if (recentEvents.length === 0) return <div className="muted small-copy">No events yet.</div>
+
+  return (
+    <div className="event-timeline">
+      {recentEvents.map((event, index) => (
+        <div key={`${event.type}-${event.nodeId || 'workflow'}-${index}`} className="event-item timeline-item">
+          <div className="workflow-phone-card-top row-between">
+            <strong>{event.label || event.nodeId || 'Workflow'}</strong>
+            <span className="pill">{event.type}</span>
+          </div>
+          <div className="muted small-copy">{event.message || 'No extra detail.'}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WorkspaceSettingsScreen({ connection, bridgeUrlDraft, onBridgeUrlDraftChange, onSaveBridgeTarget, onResetBridgeTarget, onRefreshConnection, refreshingConnection, oauthStatus, accountsMessage, onConnectProvider, onTestAccount, onOpenJson }) {
+  return (
+    <div className="workspace-screen-stack">
+      <div className="panel workspace-section-intro quiet-surface">
+        <div className="section-title">Settings</div>
+      </div>
+
+      <div className="panel-section compact-panel-section panel">
+        <div className={connection.connected ? 'success' : 'muted'}>{connection.connected ? 'Connected' : 'Unavailable'}</div>
+        <div className="muted connection-copy">{connection.connected ? 'Bridge connected' : connection.error || 'Sample mode'}</div>
+        <div className="hero-pills connection-pills">
+          <span className="pill">{connection.bridgeUrl || 'bridge unknown'}</span>
+          {connection.connected ? <span className="pill">live bridge</span> : <span className="pill">sample mode</span>}
+        </div>
+        <label className="field-label">Bridge URL<input className="text-input" value={bridgeUrlDraft} onChange={(event) => onBridgeUrlDraftChange(event.target.value)} /></label>
+        <div className="provider-actions">
+          <button className="primary-button" onClick={onSaveBridgeTarget}>Save</button>
+          <button className="secondary-button" onClick={onResetBridgeTarget}>Reset</button>
+          <button className="secondary-button" onClick={onRefreshConnection} disabled={refreshingConnection}>{refreshingConnection ? 'Refreshing…' : 'Refresh'}</button>
+          <button className="secondary-button" onClick={onOpenJson}>Open workflow JSON</button>
+        </div>
+      </div>
+
+      <AccountsPanel providers={connection.providers || []} accounts={connection.accounts || []} onRefresh={onRefreshConnection} onConnect={onConnectProvider} onTest={onTestAccount} refreshing={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} />
+    </div>
+  )
+}
+
 function App() {
   const [workflows, setWorkflows] = useState(initialWorkflows)
   const [activeWorkflowId, setActiveWorkflowId] = useState(initialWorkflows[0]?.id || '')
@@ -513,17 +737,14 @@ function App() {
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
   const [activeView, setActiveView] = useState('library')
+  const [workspaceTab, setWorkspaceTab] = useState('canvas')
   const [connection, setConnection] = useState({ connected: false, bridgeUrl: 'http://127.0.0.1:4318', providers: [], accounts: [] })
   const [refreshingConnection, setRefreshingConnection] = useState(false)
   const [socratesMessages, setSocratesMessages] = useState([])
   const [socratesDraft, setSocratesDraft] = useState('')
   const [sendingToSocrates, setSendingToSocrates] = useState(false)
-  const [socratesOpen, setSocratesOpen] = useState(false)
   const [jsonPanelOpen, setJsonPanelOpen] = useState(false)
   const [nodeSheetOpen, setNodeSheetOpen] = useState(false)
-  const [runSheetOpen, setRunSheetOpen] = useState(false)
-  const [menuSheetOpen, setMenuSheetOpen] = useState(false)
-  const [accountsSheetOpen, setAccountsSheetOpen] = useState(false)
   const [oauthStatus, setOauthStatus] = useState(null)
   const [accountsMessage, setAccountsMessage] = useState('')
   const [bridgeUrlDraft, setBridgeUrlDraft] = useState(getSavedBridgeUrl())
@@ -531,6 +752,7 @@ function App() {
   const [librarySort, setLibrarySort] = useState('updated')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 40, y: 24 })
+  const [lastRouteByWorkflow, setLastRouteByWorkflow] = useState({})
   const workflowsRef = useRef(workflows)
   const deferredQuery = useDeferredValue(libraryQuery)
 
@@ -589,6 +811,7 @@ function App() {
       persistWorkflow(parsedWorkflow, { syncText: false })
     }, 250)
     return () => window.clearTimeout(timeoutId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedWorkflow, validation.ok, activeView])
 
   function getWorkflowFromLibrary(workflowId, source = workflowsRef.current) {
@@ -630,6 +853,17 @@ function App() {
     refreshConnection()
   }
 
+  function rememberWorkspaceTab(tab) {
+    const workflowId = parsedWorkflow?.id || activeWorkflowId
+    if (!workflowId) return
+    setLastRouteByWorkflow((current) => ({ ...current, [workflowId]: tab }))
+  }
+
+  function goToWorkspaceTab(tab) {
+    setWorkspaceTab(tab)
+    rememberWorkspaceTab(tab)
+  }
+
   function loadWorkflow(workflowId) {
     const nextLibrary = touchWorkflowOpened(workflowsRef.current, workflowId)
     workflowsRef.current = nextLibrary
@@ -642,6 +876,7 @@ function App() {
     setRunState(null)
     setJsonPanelOpen(false)
     resetCanvasState(setZoom, setPan)
+    setWorkspaceTab(lastRouteByWorkflow[workflow.id] || 'canvas')
     setActiveView('canvas')
   }
 
@@ -652,16 +887,22 @@ function App() {
     setWorkflowText(JSON.stringify(savedWorkflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
-    setSocratesMessages([{ role: 'assistant', text: 'New workflow created and saved locally. Ask Socrates to return a structured draft or patch.' }])
-    setSocratesOpen(true)
+    setSocratesMessages([{ role: 'assistant', text: 'New workflow created.' }])
     setJsonPanelOpen(false)
     resetCanvasState(setZoom, setPan)
+    goToWorkspaceTab('socrates')
     setActiveView('canvas')
   }
 
   function handleSelectNode(nodeId) {
     setSelectedNodeId(nodeId)
     setNodeSheetOpen(true)
+  }
+
+  function openNodeWorkspace(nodeId = selectedNodeId) {
+    if (nodeId) setSelectedNodeId(nodeId)
+    setNodeSheetOpen(false)
+    goToWorkspaceTab('node')
   }
 
   function patchSelectedNode(patch) {
@@ -685,11 +926,11 @@ function App() {
     if (!validation.ok || !parsedWorkflow || !triggerNodeId) return
     setRunning(true)
     setRunState(null)
-    setRunSheetOpen(true)
+    goToWorkspaceTab('run')
     try {
       await runWorkflow(parsedWorkflow, (nextState) => {
         setRunState(nextState)
-        setRunSheetOpen(true)
+        rememberWorkspaceTab('run')
       }, {
         triggerNodeId,
         liveExecutors: connection.connected ? { generateStoryIdea, writeStory, editStory, saveFileToGoogleDrive } : undefined,
@@ -718,6 +959,7 @@ function App() {
         assistantText = `${assistantText}\n\nApplied ${result.change.type === 'replace_workflow' ? 'a full workflow draft' : 'a structured patch'} and saved it to your workflow library.`
       }
       setSocratesMessages((current) => [...current, { role: 'assistant', text: assistantText }])
+      goToWorkspaceTab('socrates')
     } catch (error) {
       setSocratesMessages((current) => [...current, { role: 'assistant', text: `Socrates unavailable: ${error.message}` }])
     } finally {
@@ -727,7 +969,7 @@ function App() {
 
   async function handleConnectProvider(provider) {
     setAccountsMessage('')
-    setAccountsSheetOpen(true)
+    goToWorkspaceTab('settings')
     if (provider === 'google') {
       try {
         const result = await connectGoogleAccount()
@@ -788,74 +1030,45 @@ function App() {
         />
       ) : (
         <div className="mobile-canvas-screen">
-          <header className="phone-topbar">
-            <button className="secondary-button" onClick={() => setActiveView('library')}>Library</button>
-            <div className="phone-topbar-center">
-              <div className="phone-topbar-title">{parsedWorkflow?.name ?? 'Workflow'}</div>
-              <div className="muted small-copy">{parsedWorkflow?.appId ?? 'unknown app'} · saved locally</div>
-            </div>
-            <div className="phone-topbar-actions">
-              <button className="primary-button" onClick={() => handleRun(defaultTriggerNodeId)} disabled={running || !defaultTriggerNodeId || !validation.ok}>{running ? 'Running…' : 'Run'}</button>
-              <button className="secondary-button" onClick={() => setMenuSheetOpen(true)}>Menu</button>
-            </div>
-          </header>
+          <WorkspaceHeader workflow={parsedWorkflow} validation={validation} selectedNode={selectedNode} running={running} onBackToLibrary={() => setActiveView('library')} onRun={() => handleRun(defaultTriggerNodeId)} onOpenJson={() => setJsonPanelOpen(true)} onJumpToTab={goToWorkspaceTab} />
 
-          {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} zoom={zoom} pan={pan} onPanChange={setPan} onZoomChange={setZoom} /> : null}
+          <div className="workspace-tabbar-shell">
+            <WorkspaceTabBar activeTab={workspaceTab} selectedNodeId={selectedNodeId} onChange={goToWorkspaceTab} />
+          </div>
+
+          {parsedWorkflow ? (
+            <main className="workspace-main">
+              {workspaceTab === 'canvas' ? <WorkspaceCanvasScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} onOpenNodeWorkspace={() => openNodeWorkspace()} onOpenRunWorkspace={() => goToWorkspaceTab('run')} zoom={zoom} pan={pan} onPanChange={setPan} onZoomChange={setZoom} runState={runState} /> : null}
+              {workspaceTab === 'node' ? <WorkspaceNodeScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedTool={selectedTool} selectedNodeId={selectedNodeId} onSelectNode={openNodeWorkspace} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} /> : null}
+              {workspaceTab === 'run' ? <div className="workspace-screen-stack"><div className="panel workspace-section-intro quiet-surface"><div className="section-title">Run</div></div><div className="panel"><RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} /><div className="event-panel"><div className="section-title">Events</div><EventTimeline events={runState?.events || []} /></div></div></div> : null}
+              {workspaceTab === 'socrates' ? <WorkspaceSocratesScreen connection={connection} socratesMessages={socratesMessages} socratesDraft={socratesDraft} onSocratesDraftChange={setSocratesDraft} onSendToSocrates={handleSendToSocrates} sendingToSocrates={sendingToSocrates} /> : null}
+              {workspaceTab === 'settings' ? <WorkspaceSettingsScreen connection={connection} bridgeUrlDraft={bridgeUrlDraft} onBridgeUrlDraftChange={setBridgeUrlDraft} onSaveBridgeTarget={saveBridgeTarget} onResetBridgeTarget={resetBridgeTarget} onRefreshConnection={refreshConnection} refreshingConnection={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} onConnectProvider={handleConnectProvider} onTestAccount={handleTestAccount} onOpenJson={() => setJsonPanelOpen(true)} /> : null}
+            </main>
+          ) : null}
         </div>
       )}
 
       <BottomSheet open={nodeSheetOpen && !!selectedNode} onClose={() => { setNodeSheetOpen(false); setSelectedNodeId('') }} title={selectedNode?.label || 'Node'} subtitle={selectedTool?.title || selectedNode?.type} tall>
-        {selectedNode && parsedWorkflow ? <NodeDetailPanel node={selectedNode} tool={selectedTool} workflow={parsedWorkflow} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} /> : null}
-      </BottomSheet>
-
-      <BottomSheet open={runSheetOpen} onClose={() => setRunSheetOpen(false)} title="Run Activity" subtitle="Execution results and outputs" tall>
-        <RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} />
-      </BottomSheet>
-
-      <BottomSheet open={menuSheetOpen} onClose={() => setMenuSheetOpen(false)} title="Workflow Menu" subtitle="Everything secondary lives here">
-        <div className="menu-sheet-list">
-          <button className="workflow-phone-card" onClick={() => { setRunSheetOpen(true); setMenuSheetOpen(false) }}>Open run activity</button>
-          <button className="workflow-phone-card" onClick={() => { setSocratesOpen(true); setMenuSheetOpen(false) }}>Open Socrates</button>
-          <button className="workflow-phone-card" onClick={() => { setJsonPanelOpen(true); setMenuSheetOpen(false) }}>Open workflow JSON</button>
-          <button className="workflow-phone-card" onClick={() => { setAccountsSheetOpen(true); setMenuSheetOpen(false) }}>Accounts & bridge</button>
-          <button className="workflow-phone-card" onClick={() => { resetCanvasState(setZoom, setPan); setMenuSheetOpen(false) }}>Reset canvas view</button>
-        </div>
-      </BottomSheet>
-
-      <BottomSheet open={accountsSheetOpen} onClose={() => setAccountsSheetOpen(false)} title="Accounts & Bridge" subtitle={connection.connected ? 'Connected to bridge' : 'Bridge unavailable'} tall>
-        <div className="panel-section compact-panel-section">
-          <div className={connection.connected ? 'success' : 'muted'}>{connection.connected ? 'Connected to bridge' : 'Bridge unavailable'}</div>
-          <div className="muted connection-copy">{connection.connected ? 'Workflow Studio can reach your Mac bridge.' : connection.error || 'Using built-in sample data.'}</div>
-          <div className="hero-pills connection-pills">
-            <span className="pill">{connection.bridgeUrl || 'bridge unknown'}</span>
-            {connection.connected ? <span className="pill">live bridge</span> : <span className="pill">sample mode</span>}
+        {selectedNode && parsedWorkflow ? (
+          <div className="workspace-screen-stack">
+            <div className="panel">
+              <div className="row-between workspace-footer-row">
+                <div>
+                  <div className="section-title">Node</div>
+                </div>
+                <button className="primary-button" onClick={() => openNodeWorkspace(selectedNode.id)}>Edit</button>
+              </div>
+            </div>
+            <NodeDetailPanel node={selectedNode} tool={selectedTool} workflow={parsedWorkflow} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} />
           </div>
-          <label className="field-label">Workflow Studio bridge target<input className="text-input" value={bridgeUrlDraft} onChange={(event) => setBridgeUrlDraft(event.target.value)} /></label>
-          <div className="provider-actions">
-            <button className="primary-button" onClick={saveBridgeTarget}>Save bridge URL</button>
-            <button className="secondary-button" onClick={resetBridgeTarget}>Reset to default</button>
-            <button className="secondary-button" onClick={refreshConnection} disabled={refreshingConnection}>{refreshingConnection ? 'Refreshing…' : 'Refresh'}</button>
-          </div>
-        </div>
-        <AccountsPanel providers={connection.providers || []} accounts={connection.accounts || []} onRefresh={refreshConnection} onConnect={handleConnectProvider} onTest={handleTestAccount} refreshing={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} />
+        ) : null}
       </BottomSheet>
 
-      <BottomSheet open={jsonPanelOpen} onClose={() => setJsonPanelOpen(false)} title="Workflow JSON" subtitle={validation.ok ? 'Valid workflow' : 'Validation issues present'} tall>
+      <BottomSheet open={jsonPanelOpen} onClose={() => setJsonPanelOpen(false)} title="JSON" subtitle={validation.ok ? 'Valid' : 'Issues'} tall>
         <div className="json-panel-content">
           <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
           {!validation.ok ? <div className="validation-list">{validation.errors.map((issue) => <div key={`${issue.path}-${issue.message}`} className="validation-item error">{issue.path}: {issue.message}</div>)}</div> : null}
           {validation.warnings.length > 0 ? <div className="validation-list">{validation.warnings.map((issue) => <div key={`${issue.path}-${issue.message}`} className="validation-item warning">{issue.path}: {issue.message}</div>)}</div> : null}
-        </div>
-      </BottomSheet>
-
-      <BottomSheet open={socratesOpen} onClose={() => setSocratesOpen(false)} title="Socrates" subtitle={connection.connected ? 'Structured authoring via reachable bridge' : 'Bridge required for live Socrates chat'} tall>
-        <div className="socrates-panel">
-          <div className="chat-log">
-            {socratesMessages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow. Valid drafts or patches are applied and saved automatically.</div> : null}
-            {socratesMessages.map((item, index) => <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}><strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong><div>{item.text}</div></div>)}
-          </div>
-          <textarea className="chat-input" value={socratesDraft} onChange={(event) => setSocratesDraft(event.target.value)} placeholder="Ask Socrates to create a workflow, add nodes, rename steps, or patch the current draft." spellCheck="false" />
-          <div className="row-between"><span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span><button className="primary-button" disabled={sendingToSocrates || !connection.connected || !socratesDraft.trim() || !parsedWorkflow} onClick={handleSendToSocrates}>{sendingToSocrates ? 'Sending…' : 'Send to Socrates'}</button></div>
         </div>
       </BottomSheet>
     </div>
