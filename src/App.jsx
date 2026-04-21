@@ -492,34 +492,30 @@ function SchemaBlock({ title, value, defaultOpen = false }) {
 function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider, onClose }) {
   if (!node) return null
 
-  const incoming = workflow.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from)
-  const outgoing = workflow.edges.filter((edge) => edge.from === node.id).map((edge) => edge.to)
+  const incomingEdges = workflow.edges.filter((edge) => edge.to === node.id)
+  const outgoingEdges = workflow.edges.filter((edge) => edge.from === node.id)
+  const incoming = incomingEdges.map((edge) => edge.from)
+  const outgoing = outgoingEdges.map((edge) => edge.to)
   const latestOutput = runState?.nodeOutputs?.[node.id]
   const latestStatus = runState?.nodeStatus?.[node.id] || 'idle'
   const requirements = getToolRequirements(node.toolId)
   const compatibleAccounts = getCompatibleAccounts(accounts, node.toolId)
   const isTrigger = node.type === 'trigger'
   const canTrigger = isTrigger && workflow.entryNodeId === node.id
-
-  const inputSummary = incoming.length > 0 ? incoming : ['No upstream inputs']
-  const outputSummary = latestOutput
-    ? Object.keys(latestOutput).length > 0
-      ? Object.keys(latestOutput)
-      : ['Completed with no structured output']
-    : tool?.outputSchema
-      ? Object.keys(tool.outputSchema)
-      : ['Output not produced yet']
+  const latestEvent = [...(runState?.events || [])].reverse().find((event) => event.nodeId === node.id)
+  const latestInputNodeId = incomingEdges[incomingEdges.length - 1]?.from
+  const latestInput = latestInputNodeId ? runState?.nodeOutputs?.[latestInputNodeId] : null
 
   return (
-    <div className="panel-section grow node-detail-panel node-popover-panel">
-      <div className="node-detail-header">
+    <div className="panel-section grow node-detail-panel node-popover-panel n8n-like-popover">
+      <div className="node-detail-header compact">
         <div>
-          <div className="section-title">{node.label}</div>
+          <div className="node-kicker">{node.type}</div>
+          <div className="section-title popover-title">{node.label}</div>
           <div className="muted">{tool?.description || node.description || 'No description yet.'}</div>
         </div>
-        <div className="node-detail-meta">
-          <span className="pill">{node.type}</span>
-          <span className="pill">{latestStatus}</span>
+        <div className="node-detail-meta stacked">
+          <span className={`pill state-pill state-${latestStatus}`}>{latestStatus}</span>
           <button className="secondary-button popover-close-button" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -528,68 +524,19 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         <div className="node-action-card">
           <div>
             <strong>Run from this node</strong>
-            <div className="muted small-copy">Use the trigger directly from the node popover.</div>
+            <div className="muted small-copy">Trigger this workflow directly from the node inspector.</div>
           </div>
           <button className="primary-button" onClick={() => onRunTrigger(node.id)}>{node.config?.triggerLabel ?? 'Start workflow'}</button>
         </div>
       ) : null}
 
-      <div className="node-detail-grid">
-        <div className="node-info-card">
-          <div className="section-title">Inputs</div>
-          <ul>
-            {inputSummary.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-        <div className="node-info-card">
-          <div className="section-title">Outputs</div>
-          <ul>
-            {outputSummary.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
+      <div className="node-info-card run-summary-card">
+        <div className="section-title">Run Info</div>
+        <div className="muted small-copy">Latest status: {latestStatus}</div>
+        <div className="muted small-copy">Latest event: {latestEvent?.message || latestEvent?.type || 'none yet'}</div>
+        <div className="muted small-copy">Incoming routes: {incoming.length ? incoming.join(', ') : 'none'}</div>
+        <div className="muted small-copy">Outgoing routes: {outgoing.length ? outgoing.join(', ') : 'none'}</div>
       </div>
-
-      <div className="node-detail-grid">
-        <div className="node-info-card">
-          <div className="section-title">Routes</div>
-          <div className="muted small-copy">Incoming: {incoming.length ? incoming.join(', ') : 'none'}</div>
-          <div className="muted small-copy">Outgoing: {outgoing.length ? outgoing.join(', ') : 'none'}</div>
-        </div>
-        <div className="node-info-card">
-          <div className="section-title">Requirements</div>
-          <div className="muted small-copy">Tool: {node.toolId || 'none'}</div>
-          <div className="muted small-copy">Runtime target: {node.config?.runtimeTarget || 'default'}</div>
-          {requirements ? (
-            <div className="muted small-copy">Needs: {requirements.provider} · {(requirements.requiredCapabilities || []).join(', ')}</div>
-          ) : (
-            <div className="muted small-copy">No special external account requirement.</div>
-          )}
-        </div>
-      </div>
-
-      {requirements?.provider === 'google' ? (
-        <div className="node-info-card">
-          <div className="section-title">Connected Account</div>
-          {compatibleAccounts.length === 0 ? (
-            <div className="account-callout">
-              <div className="muted">This node needs a Google account with Drive access.</div>
-              <button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button>
-            </div>
-          ) : null}
-          <label className="field-label">
-            Account
-            <select
-              value={node.config?.accountId ?? ''}
-              onChange={(event) => onPatchNode({ config: { ...node.config, accountId: event.target.value } })}
-            >
-              <option value="">Select a connected Google account</option>
-              {compatibleAccounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.label}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      ) : null}
 
       <div className="node-info-card">
         <div className="section-title">Configuration</div>
@@ -625,6 +572,30 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         </div>
       </div>
 
+      {requirements?.provider === 'google' ? (
+        <div className="node-info-card">
+          <div className="section-title">Connected Account</div>
+          {compatibleAccounts.length === 0 ? (
+            <div className="account-callout">
+              <div className="muted">This node needs a Google account with Drive access.</div>
+              <button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button>
+            </div>
+          ) : null}
+          <label className="field-label">
+            Account
+            <select
+              value={node.config?.accountId ?? ''}
+              onChange={(event) => onPatchNode({ config: { ...node.config, accountId: event.target.value } })}
+            >
+              <option value="">Select a connected Google account</option>
+              {compatibleAccounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+
       {node.prompt ? (
         <div className="node-info-card">
           <div className="section-title">Prompt</div>
@@ -632,19 +603,36 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         </div>
       ) : null}
 
-      <div className="node-info-card">
-        <div className="section-title">Schemas</div>
-        <SchemaBlock title="Input Schema" value={tool?.inputSchema} />
-        <SchemaBlock title="Output Schema" value={tool?.outputSchema} />
-        <SchemaBlock title="Expected Schema" value={node.config?.expectedSchema} />
+      <div className="node-detail-grid">
+        <div className="node-info-card">
+          <div className="section-title">Input Data</div>
+          {latestInput ? <pre>{JSON.stringify(latestInput, null, 2)}</pre> : <div className="muted small-copy">No upstream runtime input yet.</div>}
+        </div>
+        <div className="node-info-card">
+          <div className="section-title">Output Data</div>
+          {latestOutput ? <pre>{JSON.stringify(latestOutput, null, 2)}</pre> : <div className="muted small-copy">No runtime output yet.</div>}
+        </div>
       </div>
 
-      {latestOutput ? (
+      <div className="node-detail-grid">
         <div className="node-info-card">
-          <div className="section-title">Latest Output</div>
-          <pre>{JSON.stringify(latestOutput, null, 2)}</pre>
+          <div className="section-title">Schemas</div>
+          <SchemaBlock title="Input Schema" value={tool?.inputSchema} />
+          <SchemaBlock title="Output Schema" value={tool?.outputSchema} />
+          <SchemaBlock title="Expected Schema" value={node.config?.expectedSchema} />
         </div>
-      ) : null}
+        <div className="node-info-card">
+          <div className="section-title">Details</div>
+          <div className="muted small-copy">Tool: {node.toolId || 'none'}</div>
+          <div className="muted small-copy">Runtime target: {node.config?.runtimeTarget || 'default'}</div>
+          {requirements ? (
+            <div className="muted small-copy">Needs: {requirements.provider} · {(requirements.requiredCapabilities || []).join(', ')}</div>
+          ) : (
+            <div className="muted small-copy">No special external account requirement.</div>
+          )}
+          <div className="muted small-copy">Node id: {node.id}</div>
+        </div>
+      </div>
     </div>
   )
 }
