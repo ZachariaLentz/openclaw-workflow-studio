@@ -409,7 +409,8 @@ select {
   position: sticky;
   bottom: 0;
   z-index: 10;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
+  margin-top: -2px;
 }
 
 .workspace-nav-stack {
@@ -427,6 +428,15 @@ select {
   border: 1px solid rgba(136, 156, 199, 0.2);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(16px);
+}
+
+.workspace-tabbar-shell::before {
+  content: '';
+  position: absolute;
+  inset: -18px 0 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(11, 16, 32, 0) 0%, rgba(11, 16, 32, 0.88) 60%, rgba(11, 16, 32, 0.98) 100%);
+  z-index: -1;
 }
 
 .workspace-tab {
@@ -476,6 +486,10 @@ select {
 }
 
 .workspace-main {
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0));
+}
+
+.workspace-main {
   min-height: 0;
 }
 
@@ -484,6 +498,10 @@ select {
 .canvas-selection-panel,
 .workspace-node-panel {
   padding: 16px;
+}
+
+.canvas-selection-panel {
+  scroll-margin-top: 120px;
 }
 
 .workspace-footer-row {
@@ -499,6 +517,10 @@ select {
   align-items: center;
 }
 
+.graph-phone-topline .hero-pills {
+  row-gap: 6px;
+}
+
 .diagram-surface {
   position: relative;
   overflow: hidden;
@@ -512,6 +534,10 @@ select {
   background-size: 24px 24px, 24px 24px, auto;
   border: 1px solid rgba(130, 152, 201, 0.18);
   touch-action: none;
+}
+
+.mobile-canvas {
+  overscroll-behavior: contain;
 }
 
 .graph-stage-surface {
@@ -938,6 +964,23 @@ select {
     border-radius: 18px;
   }
 
+  .workflow-library-screen,
+  .mobile-canvas-screen,
+  .workspace-main,
+  .workspace-screen-stack,
+  .accounts-page {
+    gap: 12px;
+  }
+
+  .library-toolbar,
+  .workspace-header-summary,
+  .workspace-summary-panel,
+  .workspace-node-panel,
+  .panel-section,
+  .event-panel {
+    gap: 10px;
+  }
+
   .workspace-nav-stack {
     gap: 8px;
   }
@@ -945,9 +988,11 @@ select {
   .workspace-tabbar {
     gap: 6px;
     padding: 8px;
+    border-radius: 18px;
   }
 
   .workspace-tab {
+    min-height: 46px;
     padding: 10px 6px;
     font-size: 0.86rem;
   }
@@ -958,7 +1003,18 @@ select {
 
   .utility-chip {
     flex: 1;
+    min-height: 40px;
     text-align: center;
+  }
+
+  .workflow-card-meta {
+    gap: 8px;
+    font-size: 0.78rem;
+  }
+
+  .pill {
+    padding: 5px 9px;
+    font-size: 0.75rem;
   }
 
   .workspace-primary-actions > * {
@@ -971,8 +1027,16 @@ select {
   }
 
   .graph-stage-surface {
-    min-height: 380px;
-    height: 52vh;
+    min-height: 360px;
+    height: 48vh;
+  }
+
+  .canvas-selection-panel,
+  .workspace-summary-panel,
+  .workspace-node-panel,
+  .workspace-section-intro,
+  .panel {
+    padding: 14px;
   }
 
   .sheet-panel,
