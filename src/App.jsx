@@ -479,15 +479,16 @@ function App() {
   const parseErrorText = parsedResult.error
 
   const validation = useMemo(() => {
-    if (!parsedWorkflow) return { ok: false, errors: [{ path: 'workflow', message: parseErrorText || 'Invalid JSON' }] }
+    if (!parsedWorkflow) return { ok: false, errors: [{ path: 'workflow', message: parseErrorText || 'Invalid JSON' }], warnings: [] }
     const result = validateWorkflow(parsedWorkflow)
     const errors = [...result.errors]
+    const warnings = []
     for (const node of parsedWorkflow.nodes || []) {
       if (node.toolId === 'integrations.google_drive.save_file' && !node.config?.accountId) {
-        errors.push({ path: `nodes.${node.id}.config.accountId`, message: 'Google Drive Save File requires a connected Google account.' })
+        warnings.push({ path: `nodes.${node.id}.config.accountId`, message: 'Google Drive Save File will be skipped until a connected Google account is selected.' })
       }
     }
-    return { ok: errors.length === 0, errors }
+    return { ok: errors.length === 0, errors, warnings }
   }, [parsedWorkflow, parseErrorText])
 
   const selectedNode = parsedWorkflow?.nodes?.find((node) => node.id === selectedNodeId)

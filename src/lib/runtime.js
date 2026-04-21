@@ -9,7 +9,40 @@ function getIncoming(workflow, nodeId) {
 function depsSatisfied(state, workflow, nodeId) {
   const incoming = getIncoming(workflow, nodeId)
   if (incoming.length === 0) return true
-  return incoming.every((edge) => state.nodeStatus[edge.from] === 'completed')
+  return incoming.every((edge) => state.nodeStatus[edge.from] === 'completed' || state.nodeStatus[edge.from] === 'skipped')
+}
+
+function getNodeById(workflow, nodeId) {
+  return workflow.nodes.find((node) => node.id === nodeId)
+}
+
+function shouldSkipNode(node, state, workflow) {
+  if (node.toolId !== 'integrations.google_drive.save_file') return false
+  if (node.config?.accountId) return false
+
+  const incoming = getIncoming(workflow, node.id)
+  const previousNodeId = incoming[incoming.length - 1]?.from
+  const previousOutput = previousNodeId ? state.nodeOutputs[previousNodeId] : null
+  const hasContent = Boolean(previousOutput?.editedText ?? previousOutput?.storyText ?? previousOutput?.content)
+  return hasContent
+}
+
+function getUsableParentOutput(state, workflow, nodeId) {
+  const incoming = getIncoming(workflow, nodeId)
+  for (let index = incoming.length - 1; index >= 0; index -= 1) {
+    const edge = incoming[index]
+    const parentStatus = state.nodeStatus[edge.from]
+    if (parentStatus === 'completed') {
+      return state.nodeOutputs[edge.from]
+    }
+    if (parentStatus === 'skipped') {
+      const parentNode = getNodeById(workflow, edge.from)
+      if (!parentNode) continue
+      const parentOutput = getUsableParentOutput(state, workflow, parentNode.id)
+      if (parentOutput !== undefined) return parentOutput
+    }
+  }
+  return undefined
 }
 
 function inferStoryTitle(idea) {
@@ -288,9 +321,21 @@ export async function runWorkflow(workflow, onEvent, options = {}) {
     }
 
     for (const node of runnable) {
-      const incoming = getIncoming(workflow, node.id)
-      const lastParent = incoming[incoming.length - 1]?.from
-      const lastOutput = lastParent ? state.nodeOutputs[lastParent] : undefined
+      const lastOutput = getUsableParentOutput(state, workflow, node.id)
+
+      if (shouldSkipNode(node, state, workflow)) {
+        state.nodeStatus[node.id] = 'skipped'
+        const skipped = {
+          type: 'node-skipped',
+          nodeId: node.id,
+          label: node.label,
+          message: 'Skipped Google Drive save because no connected Google account is selected.',
+        }
+        state.events.push(skipped)
+        onEvent?.(structuredClone(state), skipped)
+        pending.delete(node.id)
+        continue
+      }
 
       state.nodeStatus[node.id] = 'running'
       const started = { type: 'node-start', nodeId: node.id, label: node.label }
