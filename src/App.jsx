@@ -7,7 +7,7 @@ import { editStory, generateStoryIdea, saveFileToGoogleDrive, writeStory } from 
 import { sendToSocrates } from './lib/socrates'
 import { createBlankWorkflow } from './lib/newWorkflow'
 import { connectGoogleAccount, connectProvider, getGoogleConnectionStatus, testAccount } from './lib/bridge'
-import { getCompatibleAccounts } from './lib/accounts'
+import { getCompatibleAccounts, getToolRequirements } from './lib/accounts'
 import { clearBridgeUrl, getDefaultBridgeUrl, getSavedBridgeUrl, saveBridgeUrl } from './lib/bridgeConfig'
 
 const initialWorkflows = getInitialWorkflows()
@@ -109,24 +109,6 @@ function GraphView({ workflow, selectedNodeId, onSelectNode }) {
   )
 }
 
-function EdgeList({ workflow }) {
-  return (
-    <div className="panel-section">
-      <div className="section-title">Paths</div>
-      <div className="edge-list">
-        {workflow.edges.map((edge) => (
-          <div key={edge.id} className="edge-item">
-            <span>{edge.from}</span>
-            <span>→</span>
-            <span>{edge.to}</span>
-            {edge.condition ? <code>{edge.condition}</code> : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function ToolList({ workflow }) {
   return (
     <div className="panel-section">
@@ -166,281 +148,10 @@ function ValidationPanel({ validation }) {
   )
 }
 
-function WorkingNodesPanel({ workflow }) {
-  const toolIds = new Set(workflow.tools.map((tool) => tool.id))
-  const workingNodes = [
-    { category: 'Triggers', label: 'Manual Trigger', status: toolIds.has('trigger.manual') ? 'working' : 'missing' },
-    { category: 'AI', label: 'Structured Prompt', status: toolIds.has('ai.structured_prompt') ? 'working' : 'missing' },
-    { category: 'AI', label: 'Prompt', status: toolIds.has('ai.prompt') ? 'working' : 'missing' },
-    { category: 'Integrations', label: 'Google Drive Save File', status: toolIds.has('integrations.google_drive.save_file') ? 'working' : 'missing' },
-    { category: 'Outputs', label: 'Download File', status: toolIds.has('outputs.download_file') ? 'working' : 'missing' },
-  ]
-
-  return (
-    <div className="panel-section">
-      <div className="section-title">Working Nodes</div>
-      <div className="muted">Only fully working nodes belong in the organizer.</div>
-      <div className="working-node-list">
-        {workingNodes.map((item) => (
-          <div key={`${item.category}-${item.label}`} className="working-node-item">
-            <div>
-              <strong>{item.label}</strong>
-              <div className="muted small-copy">{item.category}</div>
-            </div>
-            <span className="pill">{item.status}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function NodeInspector({ node, value, onChange, onTrigger, canTrigger, triggerLabel, onPatchNode, accounts, onConnectProvider }) {
-  if (!node) {
-    return (
-      <div className="panel-section">
-        <div className="section-title">Step Details</div>
-        <div className="muted">Select a step to review or edit its details.</div>
-      </div>
-    )
-  }
-
-  const compatibleAccounts = getCompatibleAccounts(accounts, node.toolId)
-  const isManualTrigger = node.toolId === 'trigger.manual'
-  const isStructuredPrompt = node.toolId === 'ai.structured_prompt'
-  const isPromptNode = node.toolId === 'ai.prompt' || node.toolId === 'ai.prompt.edit'
-  const isGoogleDriveSaveFile = node.toolId === 'integrations.google_drive.save_file'
-  const isDownloadFile = node.toolId === 'outputs.download_file'
-
-  return (
-    <div className="panel-section grow">
-      <div className="section-title">Step Details</div>
-      <div className="inspector-meta">
-        <span className="pill">{node.type}</span>
-        <span>{node.label}</span>
-      </div>
-      {canTrigger ? (
-        <div className="trigger-panel">
-          <div className="muted">This workflow starts from this trigger.</div>
-          <button className="primary-button" onClick={() => onTrigger(node.id)}>{triggerLabel}</button>
-        </div>
-      ) : null}
-      {isManualTrigger ? (
-        <div className="node-form-card">
-          <div className="section-title">Manual Trigger Config</div>
-          <label className="field-label">
-            Trigger Label
-            <input
-              className="text-input"
-              value={node.config?.triggerLabel ?? ''}
-              onChange={(event) => onPatchNode({ config: { ...node.config, triggerLabel: event.target.value } })}
-            />
-          </label>
-          <label className="field-label">
-            Initiator
-            <input
-              className="text-input"
-              value={node.config?.initiator ?? ''}
-              onChange={(event) => onPatchNode({ config: { ...node.config, initiator: event.target.value } })}
-            />
-          </label>
-        </div>
-      ) : null}
-      {isStructuredPrompt ? (
-        <div className="node-form-card">
-          <div className="section-title">Structured Prompt Config</div>
-          <label className="field-label">
-            Prompt
-            <textarea
-              className="chat-input compact-input"
-              value={node.prompt ?? ''}
-              onChange={(event) => onPatchNode({ prompt: event.target.value })}
-              spellCheck="false"
-            />
-          </label>
-          <div className="field-grid">
-            <label className="field-label">
-              Audience
-              <input
-                className="text-input"
-                value={node.config?.audience ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, audience: event.target.value } })}
-              />
-            </label>
-            <label className="field-label">
-              Theme
-              <input
-                className="text-input"
-                value={node.config?.theme ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, theme: event.target.value } })}
-              />
-            </label>
-          </div>
-          <label className="field-label">
-            Expected Schema
-            <textarea
-              className="json-editor compact-editor"
-              value={JSON.stringify(node.config?.expectedSchema ?? {}, null, 2)}
-              onChange={(event) => {
-                try {
-                  onPatchNode({ config: { ...node.config, expectedSchema: JSON.parse(event.target.value) } })
-                } catch {
-                  onChange(value)
-                }
-              }}
-              spellCheck="false"
-            />
-          </label>
-        </div>
-      ) : null}
-      {isPromptNode ? (
-        <div className="node-form-card">
-          <div className="section-title">Prompt Config</div>
-          <label className="field-label">
-            Prompt
-            <textarea
-              className="chat-input compact-input"
-              value={node.prompt ?? ''}
-              onChange={(event) => onPatchNode({ prompt: event.target.value })}
-              spellCheck="false"
-            />
-          </label>
-          <div className="field-grid">
-            <label className="field-label">
-              Runtime Target
-              <input
-                className="text-input"
-                value={node.config?.runtimeTarget ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, runtimeTarget: event.target.value } })}
-              />
-            </label>
-            <label className="field-label">
-              Output Mode
-              <input
-                className="text-input"
-                value={node.config?.outputMode ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, outputMode: event.target.value } })}
-              />
-            </label>
-          </div>
-        </div>
-      ) : null}
-      {isGoogleDriveSaveFile ? (
-        <div className="node-form-card">
-          <div className="section-title">Google Drive Save File Config</div>
-          {compatibleAccounts.length === 0 ? (
-            <div className="account-callout">
-              <div className="muted">This node needs a Google account with Drive access.</div>
-              <button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button>
-            </div>
-          ) : null}
-          <label className="field-label">
-            Account
-            <select
-              value={node.config?.accountId ?? ''}
-              onChange={(event) => onPatchNode({ config: { ...node.config, accountId: event.target.value } })}
-            >
-              <option value="">Select a connected Google account</option>
-              {compatibleAccounts.map((account) => (
-                <option key={account.id} value={account.id}>{account.label}</option>
-              ))}
-            </select>
-          </label>
-          <div className="field-grid">
-            <label className="field-label">
-              Destination
-              <input
-                className="text-input"
-                value={node.config?.destination ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, destination: event.target.value } })}
-              />
-            </label>
-            <label className="field-label">
-              File Name Template
-              <input
-                className="text-input"
-                value={node.config?.fileNameTemplate ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, fileNameTemplate: event.target.value } })}
-              />
-            </label>
-          </div>
-        </div>
-      ) : null}
-      {isDownloadFile ? (
-        <div className="node-form-card">
-          <div className="section-title">Download File Config</div>
-          <div className="field-grid">
-            <label className="field-label">
-              File Name Template
-              <input
-                className="text-input"
-                value={node.config?.fileNameTemplate ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, fileNameTemplate: event.target.value } })}
-              />
-            </label>
-            <label className="field-label">
-              Content Type
-              <input
-                className="text-input"
-                value={node.config?.contentType ?? ''}
-                onChange={(event) => onPatchNode({ config: { ...node.config, contentType: event.target.value } })}
-              />
-            </label>
-          </div>
-        </div>
-      ) : null}
-      <textarea className="json-editor" value={value} onChange={(event) => onChange(event.target.value)} spellCheck="false" />
-    </div>
-  )
-}
-
-function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
-  return (
-    <div className="panel-section grow">
-      <div className="section-title row-between">
-        <span>Activity</span>
-        <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>
-          {running ? 'Running…' : 'Run workflow'}
-        </button>
-      </div>
-      <div className="muted">Run the flow and watch each step complete.</div>
-      <div className="run-status-grid">
-        {runState
-          ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (
-              <div key={nodeId} className={`status-item status-${status}`}>
-                <span>{nodeId}</span>
-                <strong>{status}</strong>
-              </div>
-            ))
-          : <div className="muted">No run yet.</div>}
-      </div>
-      <div className="event-log">
-        {runState?.events?.map((event, index) => (
-          <div key={`${event.type}-${index}`} className="event-item">
-            <strong>{event.type}</strong>
-            <span>{event.label || event.nodeId || event.message || event.because}</span>
-          </div>
-        ))}
-      </div>
-      {runState?.nodeOutputs?.['download-file']?.content ? (
-        <div className="story-preview">
-          <div className="section-title">Latest Story Output</div>
-          <pre>{runState.nodeOutputs['download-file'].content}</pre>
-          {runState.nodeOutputs['download-file'].downloadUrl ? (
-            <a className="secondary-button inline-button" href={runState.nodeOutputs['download-file'].downloadUrl} download={runState.nodeOutputs['download-file'].fileName}>
-              Download latest file
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 function ConnectionPanel({ connection, refreshing, onRefresh, bridgeUrlDraft, onBridgeUrlChange, onSaveBridgeUrl, onResetBridgeUrl }) {
   const status = connection.connected ? 'Connected to bridge' : 'Bridge unavailable'
   const detail = connection.connected
-    ? connection.status?.status?.raw || 'Bridge reachable.'
+    ? 'Workflow Studio can reach your Mac bridge.'
     : connection.error || 'Using built-in sample data.'
 
   return (
@@ -498,7 +209,7 @@ function SocratesPanel({ connection, workflowText, messages, draftMessage, onDra
         spellCheck="false"
       />
       <div className="row-between">
-        <span className="muted small-copy">{connection.connected ? 'Uses local Socrates session' : 'Bridge required for live Socrates chat'}</span>
+        <span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span>
         <button className="primary-button" disabled={sending || !connection.connected || !draftMessage.trim()} onClick={() => onSend(workflowText)}>
           {sending ? 'Sending…' : 'Send to Socrates'}
         </button>
@@ -573,12 +284,220 @@ function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refr
   )
 }
 
+function SchemaBlock({ title, value, defaultOpen = false }) {
+  if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) return null
+
+  return (
+    <details className="schema-block" open={defaultOpen}>
+      <summary>{title}</summary>
+      <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>
+    </details>
+  )
+}
+
+function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider }) {
+  if (!node) {
+    return (
+      <div className="panel-section grow">
+        <div className="section-title">Node Details</div>
+        <div className="muted">Select a node to inspect what it does, what it needs, and what it returns.</div>
+      </div>
+    )
+  }
+
+  const incoming = workflow.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from)
+  const outgoing = workflow.edges.filter((edge) => edge.from === node.id).map((edge) => edge.to)
+  const latestOutput = runState?.nodeOutputs?.[node.id]
+  const latestStatus = runState?.nodeStatus?.[node.id] || 'idle'
+  const requirements = getToolRequirements(node.toolId)
+  const compatibleAccounts = getCompatibleAccounts(accounts, node.toolId)
+  const isTrigger = node.type === 'trigger'
+  const canTrigger = isTrigger && workflow.entryNodeId === node.id
+
+  const inputSummary = incoming.length > 0 ? incoming : ['No upstream inputs']
+  const outputSummary = latestOutput
+    ? Object.keys(latestOutput).length > 0
+      ? Object.keys(latestOutput)
+      : ['Completed with no structured output']
+    : tool?.outputSchema
+      ? Object.keys(tool.outputSchema)
+      : ['Output not produced yet']
+
+  return (
+    <div className="panel-section grow node-detail-panel">
+      <div className="node-detail-header">
+        <div>
+          <div className="section-title">{node.label}</div>
+          <div className="muted">{tool?.description || node.description || 'No description yet.'}</div>
+        </div>
+        <div className="node-detail-meta">
+          <span className="pill">{node.type}</span>
+          <span className="pill">{latestStatus}</span>
+        </div>
+      </div>
+
+      {canTrigger ? (
+        <div className="node-action-card">
+          <div>
+            <strong>Run from this node</strong>
+            <div className="muted small-copy">Use the trigger directly from the selected node detail panel.</div>
+          </div>
+          <button className="primary-button" onClick={() => onRunTrigger(node.id)}>{node.config?.triggerLabel ?? 'Start workflow'}</button>
+        </div>
+      ) : null}
+
+      <div className="node-detail-grid">
+        <div className="node-info-card">
+          <div className="section-title">Inputs</div>
+          <ul>
+            {inputSummary.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+        <div className="node-info-card">
+          <div className="section-title">Outputs</div>
+          <ul>
+            {outputSummary.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      </div>
+
+      <div className="node-detail-grid">
+        <div className="node-info-card">
+          <div className="section-title">Routes</div>
+          <div className="muted small-copy">Incoming: {incoming.length ? incoming.join(', ') : 'none'}</div>
+          <div className="muted small-copy">Outgoing: {outgoing.length ? outgoing.join(', ') : 'none'}</div>
+        </div>
+        <div className="node-info-card">
+          <div className="section-title">Requirements</div>
+          <div className="muted small-copy">Tool: {node.toolId || 'none'}</div>
+          <div className="muted small-copy">Runtime target: {node.config?.runtimeTarget || 'default'}</div>
+          {requirements ? (
+            <div className="muted small-copy">Needs: {requirements.provider} · {(requirements.requiredCapabilities || []).join(', ')}</div>
+          ) : (
+            <div className="muted small-copy">No special external account requirement.</div>
+          )}
+        </div>
+      </div>
+
+      {requirements?.provider === 'google' ? (
+        <div className="node-info-card">
+          <div className="section-title">Connected Account</div>
+          {compatibleAccounts.length === 0 ? (
+            <div className="account-callout">
+              <div className="muted">This node needs a Google account with Drive access.</div>
+              <button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button>
+            </div>
+          ) : null}
+          <label className="field-label">
+            Account
+            <select
+              value={node.config?.accountId ?? ''}
+              onChange={(event) => onPatchNode({ config: { ...node.config, accountId: event.target.value } })}
+            >
+              <option value="">Select a connected Google account</option>
+              {compatibleAccounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+
+      <div className="node-info-card">
+        <div className="section-title">Configuration</div>
+        <div className="config-grid">
+          <label className="field-label">
+            Label
+            <input className="text-input" value={node.label ?? ''} onChange={(event) => onPatchNode({ label: event.target.value })} />
+          </label>
+          {node.config?.destination !== undefined ? (
+            <label className="field-label">
+              Destination
+              <input className="text-input" value={node.config?.destination ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, destination: event.target.value } })} />
+            </label>
+          ) : null}
+          {node.config?.fileNameTemplate !== undefined ? (
+            <label className="field-label">
+              File Name Template
+              <input className="text-input" value={node.config?.fileNameTemplate ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, fileNameTemplate: event.target.value } })} />
+            </label>
+          ) : null}
+          {node.config?.triggerLabel !== undefined ? (
+            <label className="field-label">
+              Trigger Label
+              <input className="text-input" value={node.config?.triggerLabel ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, triggerLabel: event.target.value } })} />
+            </label>
+          ) : null}
+          {node.config?.runtimeTarget !== undefined ? (
+            <label className="field-label">
+              Runtime Target
+              <input className="text-input" value={node.config?.runtimeTarget ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, runtimeTarget: event.target.value } })} />
+            </label>
+          ) : null}
+        </div>
+      </div>
+
+      {node.prompt ? (
+        <div className="node-info-card">
+          <div className="section-title">Prompt</div>
+          <textarea className="chat-input compact-input" value={node.prompt} onChange={(event) => onPatchNode({ prompt: event.target.value })} spellCheck="false" />
+        </div>
+      ) : null}
+
+      <div className="node-info-card">
+        <div className="section-title">Schemas</div>
+        <SchemaBlock title="Input Schema" value={tool?.inputSchema} />
+        <SchemaBlock title="Output Schema" value={tool?.outputSchema} />
+        <SchemaBlock title="Expected Schema" value={node.config?.expectedSchema} />
+      </div>
+
+      {latestOutput ? (
+        <div className="node-info-card">
+          <div className="section-title">Latest Output</div>
+          <pre>{JSON.stringify(latestOutput, null, 2)}</pre>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
+  return (
+    <div className="panel-section grow">
+      <div className="section-title row-between">
+        <span>Run Activity</span>
+        <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>
+          {running ? 'Running…' : 'Run workflow'}
+        </button>
+      </div>
+      <div className="muted">Run the flow and watch each step complete.</div>
+      <div className="run-status-grid">
+        {runState
+          ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (
+              <div key={nodeId} className={`status-item status-${status}`}>
+                <span>{nodeId}</span>
+                <strong>{status}</strong>
+              </div>
+            ))
+          : <div className="muted">No run yet.</div>}
+      </div>
+      <div className="event-log">
+        {runState?.events?.map((event, index) => (
+          <div key={`${event.type}-${index}`} className="event-item">
+            <strong>{event.type}</strong>
+            <span>{event.label || event.nodeId || event.message || event.because}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [workflows, setWorkflows] = useState(initialWorkflows)
   const [workflowIndex, setWorkflowIndex] = useState(0)
   const [workflowText, setWorkflowText] = useState(JSON.stringify(initialWorkflows[0], null, 2))
   const [selectedNodeId, setSelectedNodeId] = useState(initialWorkflows[0].nodes[0]?.id)
-  const [nodeEditorText, setNodeEditorText] = useState(JSON.stringify(initialWorkflows[0].nodes[0], null, 2))
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
   const [activeView, setActiveView] = useState('workflows')
@@ -624,20 +543,15 @@ function App() {
   }, [parsedWorkflow, parseErrorText])
 
   const selectedNode = parsedWorkflow?.nodes?.find((node) => node.id === selectedNodeId)
+  const selectedTool = parsedWorkflow?.tools?.find((tool) => tool.id === selectedNode?.toolId)
   const defaultTriggerNodeId = parsedWorkflow?.entryNodeId ?? parsedWorkflow?.nodes?.find((node) => node.type === 'trigger')?.id
-  const canTriggerSelectedNode = selectedNode?.type === 'trigger' && selectedNode?.id === defaultTriggerNodeId
 
   useEffect(() => {
     if (!selectedNodeId && parsedWorkflow?.nodes?.[0]?.id) {
       setSelectedNodeId(parsedWorkflow.nodes[0].id)
-      setNodeEditorText(JSON.stringify(parsedWorkflow.nodes[0], null, 2))
       return
     }
-
-    if (selectedNode) {
-      setNodeEditorText(JSON.stringify(selectedNode, null, 2))
-    }
-  }, [parsedWorkflow, selectedNode, selectedNodeId])
+  }, [parsedWorkflow, selectedNodeId])
 
   useEffect(() => {
     setBridgeUrlDraft(getSavedBridgeUrl())
@@ -673,7 +587,6 @@ function App() {
     setWorkflowIndex(index)
     setWorkflowText(JSON.stringify(workflow, null, 2))
     setSelectedNodeId(workflow.nodes[0]?.id)
-    setNodeEditorText(JSON.stringify(workflow.nodes[0], null, 2))
     setRunState(null)
     setSocratesMessages([])
   }
@@ -685,7 +598,6 @@ function App() {
     setWorkflowIndex(nextIndex)
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
     setSelectedNodeId(nextWorkflow.nodes[0]?.id)
-    setNodeEditorText(JSON.stringify(nextWorkflow.nodes[0], null, 2))
     setRunState(null)
     setSocratesMessages([
       {
@@ -697,23 +609,6 @@ function App() {
 
   function handleSelectNode(nodeId) {
     setSelectedNodeId(nodeId)
-    const node = parsedWorkflow?.nodes?.find((item) => item.id === nodeId)
-    setNodeEditorText(node ? JSON.stringify(node, null, 2) : '')
-  }
-
-  function applyNodeEditor() {
-    if (!parsedWorkflow || !selectedNodeId) return
-    try {
-      const parsedNode = JSON.parse(nodeEditorText)
-      const nextWorkflow = {
-        ...parsedWorkflow,
-        nodes: parsedWorkflow.nodes.map((node) => (node.id === selectedNodeId ? parsedNode : node)),
-      }
-      setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
-      setSelectedNodeId(parsedNode.id)
-    } catch (error) {
-      console.error(error)
-    }
   }
 
   function patchSelectedNode(patch) {
@@ -733,7 +628,6 @@ function App() {
     }
 
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
-    setNodeEditorText(JSON.stringify(patchedNode, null, 2))
   }
 
   async function handleRun(triggerNodeId = defaultTriggerNodeId) {
@@ -847,7 +741,7 @@ function App() {
       <header className="topbar">
         <div>
           <h1>Workflow Studio</h1>
-          <p>Design, review, and run connected workflows.</p>
+          <p>Design, connect, and run connected workflows.</p>
         </div>
         <div className="topbar-actions topbar-action-row">
           <div className="view-switcher">
@@ -924,35 +818,28 @@ function App() {
               sending={sendingToSocrates}
             />
 
-            <div className="panel two-up">
-              {parsedWorkflow ? <EdgeList workflow={parsedWorkflow} /> : null}
-              {parsedWorkflow ? <ToolList workflow={parsedWorkflow} /> : null}
-            </div>
-
             <div className="panel">
-              {parsedWorkflow ? <WorkingNodesPanel workflow={parsedWorkflow} /> : null}
+              {parsedWorkflow ? <ToolList workflow={parsedWorkflow} /> : null}
             </div>
           </section>
 
           <aside className="right-column">
-            <div className="panel workflow-editor-panel">
-              <div className="section-title">Workflow Data</div>
-              <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
-            </div>
-
-            <div className="panel inspector-panel">
-              <NodeInspector
+            <div className="panel">
+              <NodeDetailPanel
                 node={selectedNode}
-                value={nodeEditorText}
-                onChange={setNodeEditorText}
-                onTrigger={handleRun}
-                canTrigger={canTriggerSelectedNode}
-                triggerLabel={selectedNode?.config?.triggerLabel ?? 'Start workflow'}
+                tool={selectedTool}
+                workflow={parsedWorkflow}
+                runState={runState}
+                onRunTrigger={handleRun}
                 onPatchNode={patchSelectedNode}
                 accounts={connection.accounts || []}
                 onConnectProvider={handleConnectProvider}
               />
-              <button className="secondary-button" onClick={applyNodeEditor}>Apply node edit</button>
+            </div>
+
+            <div className="panel workflow-editor-panel">
+              <div className="section-title">Workflow JSON</div>
+              <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
             </div>
 
             <div className="panel">
