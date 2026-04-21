@@ -6,24 +6,203 @@ function getIncoming(workflow, nodeId) {
   return workflow.edges.filter((edge) => edge.to === nodeId)
 }
 
-function getOutgoing(workflow, nodeId) {
-  return workflow.edges.filter((edge) => edge.from === nodeId)
-}
-
 function depsSatisfied(state, workflow, nodeId) {
   const incoming = getIncoming(workflow, nodeId)
   if (incoming.length === 0) return true
   return incoming.every((edge) => state.nodeStatus[edge.from] === 'completed')
 }
 
-function coerceBoolean(value) {
-  if (typeof value === 'boolean') return value
-  if (typeof value === 'string') return ['true', 'yes', '1'].includes(value.toLowerCase())
-  return Boolean(value)
-}
-
 function inferStoryTitle(idea) {
   return idea?.title || 'The Little Lantern in the Woods'
+}
+
+function getPromptText(node, context) {
+  if (node.prompt) return node.prompt
+  return context.lastOutput?.prompt || 'Complete the requested AI task.'
+}
+
+function getTimestamp() {
+  return new Date().toISOString()
+}
+
+function buildFileName(template, title) {
+  const safeTitle = (title ?? 'story')
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const baseName = safeTitle || 'story'
+  return (template || '{{title}}.txt').replace('{{title}}', baseName)
+}
+
+function toDownloadUrl({ fileName, content, contentType }) {
+  const blob = new Blob([content], { type: contentType || 'text/plain' })
+  return URL.createObjectURL(blob)
+}
+
+async function executeStructuredPrompt(node, context) {
+  if (context.liveExecutors?.generateStoryIdea) {
+    const storyIdea = await context.liveExecutors.generateStoryIdea({
+      audience: node.config?.audience,
+      theme: node.config?.theme,
+      prompt: getPromptText(node, context),
+      expectedSchema: node.config?.expectedSchema,
+    })
+
+    return {
+      message: 'Structured prompt returned live output',
+      output: {
+        ...storyIdea,
+        live: true,
+        nodeKind: 'structured_prompt',
+      },
+    }
+  }
+
+  return {
+    message: 'Structured prompt returned fallback output',
+    output: {
+      title: 'Milo and the Moonlight Kite',
+      mainCharacter: 'Milo, a curious young fox',
+      setting: 'a breezy meadow at the edge of a moonlit forest',
+      conflict: 'Milo is afraid his handmade kite will never fly high enough to reach the stars',
+      lesson: 'Patience and courage help small efforts become something beautiful',
+      premise: 'A young fox builds a kite and learns that steady practice matters more than instant success.',
+      live: false,
+      fallback: true,
+      nodeKind: 'structured_prompt',
+    },
+  }
+}
+
+async function executePrompt(node, context) {
+  if (node.id === 'prompt-write-story') {
+    const idea = context.lastOutput ?? {}
+    const title = inferStoryTitle(idea)
+
+    if (context.liveExecutors?.writeStory) {
+      const storyDraft = await context.liveExecutors.writeStory(idea, { prompt: getPromptText(node, context) })
+      return {
+        message: 'Prompt node returned a live story draft',
+        output: {
+          ...storyDraft,
+          live: true,
+          nodeKind: 'prompt',
+        },
+      }
+    }
+
+    return {
+      message: 'Prompt node returned fallback story draft',
+      output: {
+        title,
+        storyText: `${title}\n\nMilo was a young fox who loved the sky. Every evening he watched the first stars sparkle above the meadow and wondered what it might feel like to send something of his all the way up to greet them.\n\nOne cool evening, Milo tied together twigs, soft cloth, and a long ribbon of blue string. “This will be my moonlight kite,” he whispered. But when he ran across the meadow, the kite only bumped and skipped over the grass. It did not rise at all.\n\nMilo tried again the next day. And the next. Sometimes the kite lifted for only a moment before tumbling down. Sometimes the wind spun it sideways. Sometimes Milo felt like giving up.\n\nBut each time, Milo changed one small thing. He made the tail a little longer. He held the string a little higher. He waited more carefully for the breeze.\n\nAt last, on a silver-blue evening, the wind caught the kite just right. Up it soared over the meadow, over the flowers, and high toward the first shining star. Milo laughed and ran and felt his heart rise with it.\n\nThe kite did not touch the stars. It did something better. It showed Milo what patient practice could do. And as the ribbon danced in the moonlight, Milo smiled and said, “That is high enough for tonight.”`,
+        live: false,
+        fallback: true,
+        nodeKind: 'prompt',
+      },
+    }
+  }
+
+  const draft = context.lastOutput ?? {}
+
+  if (context.liveExecutors?.editStory) {
+    const editedStory = await context.liveExecutors.editStory(draft, { prompt: getPromptText(node, context) })
+    return {
+      message: 'Prompt node returned a live edited story',
+      output: {
+        ...editedStory,
+        live: true,
+        nodeKind: 'prompt',
+      },
+    }
+  }
+
+  return {
+    message: 'Prompt node returned fallback edited story',
+    output: {
+      title: draft.title ?? 'The Little Lantern in the Woods',
+      editedText: `${draft.storyText ?? ''}\n\nEdited for smoother read-aloud pacing, gentler transitions, and a warmer closing beat.`,
+      notes: 'Trimmed repetition, improved rhythm, and preserved the core lesson.',
+      live: false,
+      fallback: true,
+      nodeKind: 'prompt',
+    },
+  }
+}
+
+async function executeGoogleDriveSaveFile(node, context) {
+  const previous = context.lastOutput ?? {}
+  const title = previous.title ?? 'story'
+  const fileName = buildFileName(node.config?.fileNameTemplate, title)
+  const content = previous.editedText ?? previous.storyText ?? ''
+
+  if (!node.config?.accountId) {
+    throw new Error('Google Drive Save File requires a connected Google account.')
+  }
+
+  if (!content) {
+    throw new Error('No content available to save to Google Drive.')
+  }
+
+  if (context.liveExecutors?.saveFileToGoogleDrive) {
+    const file = await context.liveExecutors.saveFileToGoogleDrive({
+      accountId: node.config?.accountId,
+      fileName,
+      content,
+      destination: node.config?.destination,
+      contentType: node.config?.contentType || 'text/plain',
+    })
+
+    return {
+      message: 'Google Drive save completed through the live bridge',
+      output: {
+        ...file,
+        saved: true,
+        live: true,
+        content,
+      },
+    }
+  }
+
+  return {
+    message: 'Google Drive save used fallback metadata',
+    output: {
+      fileId: 'local-fallback-drive-file',
+      fileName,
+      destination: node.config?.destination || 'Workflow Studio/Children Stories',
+      link: null,
+      saved: false,
+      live: false,
+      fallback: true,
+      content,
+    },
+  }
+}
+
+async function executeDownloadFile(node, context) {
+  const previous = context.lastOutput ?? {}
+  const title = previous.fileName ? previous.fileName.replace(/\.txt$/i, '') : previous.title ?? 'story'
+  const content = previous.content ?? previous.editedText ?? previous.storyText ?? ''
+
+  if (!content) {
+    throw new Error('No content available to prepare for download.')
+  }
+
+  const fileName = previous.fileName || buildFileName(node.config?.fileNameTemplate, title)
+  const contentType = node.config?.contentType || 'text/plain'
+
+  return {
+    message: 'Download artifact prepared in the app',
+    output: {
+      fileName,
+      contentType,
+      content,
+      downloadUrl: toDownloadUrl({ fileName, content, contentType }),
+      exportReady: true,
+      live: true,
+    },
+  }
 }
 
 async function executeNode(node, context) {
@@ -35,89 +214,19 @@ async function executeNode(node, context) {
         message: 'Manual trigger started the workflow',
         output: {
           started: true,
+          triggeredAt: getTimestamp(),
+          initiator: node.config?.initiator || 'user',
           triggerMode: node.config?.triggerMode ?? 'manual',
-          triggerLabel: node.config?.triggerLabel ?? 'Start',
-        },
-      }
-    case 'input':
-      return { message: 'Input loaded', output: node.config?.seedData ?? {} }
-    case 'transform':
-      return {
-        message: 'Transform completed',
-        output: {
-          ...context.lastOutput,
-          transformedBy: node.id,
-          summary: node.config?.summary ?? 'Structured content package prepared.',
+          triggerLabel: node.config?.triggerLabel ?? 'Start workflow',
         },
       }
     case 'tool': {
-      if (node.toolId === 'openclaw.story_idea') {
-        if (context.liveExecutors?.generateStoryIdea) {
-          try {
-            const storyIdea = await context.liveExecutors.generateStoryIdea({
-              audience: node.config?.audience,
-              theme: node.config?.theme,
-            })
-            return {
-              message: 'OpenClaw created a live story idea',
-              output: {
-                ...storyIdea,
-                live: true,
-              },
-            }
-          } catch (error) {
-            return {
-              message: `Live story idea failed, using fallback: ${error.message}`,
-              output: {
-                title: 'Milo and the Moonlight Kite',
-                mainCharacter: 'Milo, a curious young fox',
-                setting: 'a breezy meadow at the edge of a moonlit forest',
-                conflict: 'Milo is afraid his handmade kite will never fly high enough to reach the stars',
-                lesson: 'Patience and courage help small efforts become something beautiful',
-                premise: 'A young fox builds a kite and learns that steady practice matters more than instant success.',
-                live: false,
-                fallback: true,
-              },
-            }
-          }
-        }
-
-        return {
-          message: 'OpenClaw created a story idea',
-          output: {
-            title: 'Milo and the Moonlight Kite',
-            mainCharacter: 'Milo, a curious young fox',
-            setting: 'a breezy meadow at the edge of a moonlit forest',
-            conflict: 'Milo is afraid his handmade kite will never fly high enough to reach the stars',
-            lesson: 'Patience and courage help small efforts become something beautiful',
-            premise: 'A young fox builds a kite and learns that steady practice matters more than instant success.',
-            live: false,
-          },
-        }
+      if (node.toolId === 'ai.structured_prompt') {
+        return executeStructuredPrompt(node, context)
       }
 
-      if (node.toolId === 'openclaw.write_story') {
-        const idea = context.lastOutput ?? {}
-        const title = inferStoryTitle(idea)
-        return {
-          message: 'OpenClaw wrote the story draft',
-          output: {
-            title,
-            storyText: `${title}\n\nMilo was a young fox who loved the sky. Every evening he watched the first stars sparkle above the meadow and wondered what it might feel like to send something of his all the way up to greet them.\n\nOne cool evening, Milo tied together twigs, soft cloth, and a long ribbon of blue string. “This will be my moonlight kite,” he whispered. But when he ran across the meadow, the kite only bumped and skipped over the grass. It did not rise at all.\n\nMilo tried again the next day. And the next. Sometimes the kite lifted for only a moment before tumbling down. Sometimes the wind spun it sideways. Sometimes Milo felt like giving up.\n\nBut each time, Milo changed one small thing. He made the tail a little longer. He held the string a little higher. He waited more carefully for the breeze.\n\nAt last, on a silver-blue evening, the wind caught the kite just right. Up it soared over the meadow, over the flowers, and high toward the first shining star. Milo laughed and ran and felt his heart rise with it.\n\nThe kite did not touch the stars. It did something better. It showed Milo what patient practice could do. And as the ribbon danced in the moonlight, Milo smiled and said, “That is high enough for tonight.”`,
-          },
-        }
-      }
-
-      if (node.toolId === 'openclaw.edit_story') {
-        const draft = context.lastOutput ?? {}
-        return {
-          message: 'OpenClaw edited the story draft',
-          output: {
-            title: draft.title ?? 'The Little Lantern in the Woods',
-            editedText: `${draft.storyText ?? ''}\n\nEdited for smoother read-aloud pacing, gentler transitions, and a warmer closing beat.`,
-            notes: 'Trimmed repetition, improved rhythm, and preserved the core lesson.',
-          },
-        }
+      if (node.toolId === 'ai.prompt' || node.toolId === 'ai.prompt.edit') {
+        return executePrompt(node, context)
       }
 
       return {
@@ -129,35 +238,19 @@ async function executeNode(node, context) {
         },
       }
     }
-    case 'agent':
-      return {
-        message: 'Agent step completed',
-        output: {
-          agentPrompt: node.prompt ?? '',
-          result: node.config?.mockResult ?? `${node.label} generated draft output`,
-        },
-      }
-    case 'branch': {
-      const branchValue = node.config?.branchOn ?? context.lastOutput?.approved ?? true
-      return {
-        message: `Branch chose ${coerceBoolean(branchValue) ? 'true' : 'false'} path`,
-        output: { branch: coerceBoolean(branchValue) },
-      }
-    }
-    case 'approval':
-      return {
-        message: 'Approval auto-granted in MVP runtime',
-        output: { approved: true },
-      }
     case 'output': {
-      const previous = context.lastOutput ?? {}
+      if (node.toolId === 'integrations.google_drive.save_file') {
+        return executeGoogleDriveSaveFile(node, context)
+      }
+
+      if (node.toolId === 'outputs.download_file') {
+        return executeDownloadFile(node, context)
+      }
+
       return {
-        message: 'Final story prepared for Google Drive export',
+        message: 'Output node completed',
         output: {
-          final: true,
-          destination: node.config?.destination ?? 'workspace',
-          fileName: node.config?.fileNameTemplate?.replace('{{title}}', previous.title ?? 'story') ?? 'story.txt',
-          result: previous,
+          result: context.lastOutput ?? {},
         },
       }
     }
@@ -204,36 +297,33 @@ export async function runWorkflow(workflow, onEvent, options = {}) {
       state.events.push(started)
       onEvent?.(structuredClone(state), started)
 
-      const result = await executeNode(node, {
-        state,
-        lastOutput,
-        liveExecutors: options.liveExecutors,
-      })
+      try {
+        const result = await executeNode(node, {
+          state,
+          lastOutput,
+          liveExecutors: options.liveExecutors,
+        })
 
-      state.nodeStatus[node.id] = 'completed'
-      state.nodeOutputs[node.id] = result.output
-      const completed = { type: 'node-complete', nodeId: node.id, label: node.label, message: result.message }
-      state.events.push(completed)
-      onEvent?.(structuredClone(state), completed)
+        state.nodeStatus[node.id] = 'completed'
+        state.nodeOutputs[node.id] = result.output
+        const completed = { type: 'node-complete', nodeId: node.id, label: node.label, message: result.message }
+        state.events.push(completed)
+        onEvent?.(structuredClone(state), completed)
+      } catch (error) {
+        state.nodeStatus[node.id] = 'failed'
+        const failed = {
+          type: 'node-failed',
+          nodeId: node.id,
+          label: node.label,
+          message: error?.message ?? String(error),
+        }
+        state.events.push(failed)
+        state.status = 'failed'
+        onEvent?.(structuredClone(state), failed)
+        return state
+      }
 
       pending.delete(node.id)
-
-      if (node.type === 'branch') {
-        const branch = coerceBoolean(result.output?.branch)
-        const outgoing = getOutgoing(workflow, node.id)
-        for (const edge of outgoing) {
-          if (!edge.condition) continue
-          const wantsTrue = edge.condition === 'true'
-          const wantsFalse = edge.condition === 'false'
-          if ((wantsTrue && !branch) || (wantsFalse && branch)) {
-            state.nodeStatus[edge.to] = 'skipped'
-            pending.delete(edge.to)
-            const skipped = { type: 'node-skipped', nodeId: edge.to, because: `Branch ${branch} bypassed ${edge.condition} edge.` }
-            state.events.push(skipped)
-            onEvent?.(structuredClone(state), skipped)
-          }
-        }
-      }
     }
   }
 

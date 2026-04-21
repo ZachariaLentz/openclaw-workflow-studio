@@ -15,7 +15,8 @@ body {
 
 button,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -386,6 +387,62 @@ select {
   resize: vertical;
 }
 
+.compact-input {
+  min-height: 110px;
+}
+
+.compact-editor {
+  min-height: 180px;
+}
+
+.text-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(133, 154, 203, 0.24);
+  background: #0b1328;
+  color: #eff4ff;
+  padding: 10px 12px;
+}
+
+.field-label {
+  display: grid;
+  gap: 8px;
+  color: #dbe5fb;
+}
+
+.field-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.node-form-card {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.working-node-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.working-node-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
 .small-copy {
   font-size: 0.85rem;
 }
@@ -414,6 +471,83 @@ select {
   min-height: 0;
 }
 
+.view-switcher {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-button {
+  display: inline-flex;
+  margin-top: 12px;
+  text-decoration: none;
+}
+
+.account-callout {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(34, 48, 86, 0.96);
+  border: 1px solid rgba(123, 145, 194, 0.2);
+}
+
+.accounts-page {
+  display: grid;
+  gap: 16px;
+}
+
+.accounts-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.provider-card {
+  display: grid;
+  gap: 14px;
+}
+
+.provider-title {
+  margin-bottom: 6px;
+}
+
+.provider-actions,
+.account-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.account-list {
+  display: grid;
+  gap: 10px;
+}
+
+.account-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.empty-state {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.oauth-status-copy {
+  margin-top: -4px;
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;
@@ -421,5 +555,10 @@ select {
 
   .two-up {
     grid-template-columns: 1fr;
+  }
+
+  .account-item {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

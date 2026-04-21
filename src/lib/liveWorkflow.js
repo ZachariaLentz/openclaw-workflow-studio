@@ -1,12 +1,14 @@
+import { getAccounts, getAccountsProviders, getBridgeCapabilities, getBridgeHealth, getBridgeStatus, resolveBridgeUrl } from './bridge'
 import { sampleWorkflows } from '../data/workflows'
-import { getBridgeCapabilities, getBridgeHealth, getBridgeStatus, resolveBridgeUrl } from './bridge'
 
 export async function loadLocalConnectionState() {
   try {
-    const [health, status, capabilities] = await Promise.all([
+    const [health, status, capabilities, providersResponse, accountsResponse] = await Promise.all([
       getBridgeHealth(),
       getBridgeStatus(),
       getBridgeCapabilities(),
+      getAccountsProviders(),
+      getAccounts(),
     ])
 
     return {
@@ -15,12 +17,16 @@ export async function loadLocalConnectionState() {
       health,
       status,
       capabilities,
+      providers: providersResponse.providers || [],
+      accounts: accountsResponse.accounts || [],
     }
   } catch (error) {
     return {
       connected: false,
       bridgeUrl: resolveBridgeUrl(),
       error: error.message,
+      providers: [],
+      accounts: [],
     }
   }
 }
