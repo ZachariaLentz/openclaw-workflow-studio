@@ -55,12 +55,12 @@ function GraphView({ workflow, selectedNodeId, onSelectNode }) {
   const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node]))
 
   return (
-    <div className="diagram-wrap">
-      <div className="diagram-explainer">
+    <div className="graph-stage-wrap">
+      <div className="diagram-explainer graph-stage-topline">
         <span className="pill">left → right</span>
-        <span className="muted">Each step passes work forward. Paths can split, rejoin, continue, or end.</span>
+        <span className="muted">Click any node to inspect inputs, outputs, routes, requirements, and configuration.</span>
       </div>
-      <div className="diagram-surface" style={{ width: size.width, height: size.height }}>
+      <div className="diagram-surface graph-stage-surface" style={{ width: size.width, height: size.height }}>
         <svg className="diagram-svg" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
           <defs>
             <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
@@ -155,9 +155,9 @@ function ConnectionPanel({ connection, refreshing, onRefresh, bridgeUrlDraft, on
     : connection.error || 'Using built-in sample data.'
 
   return (
-    <div className="panel-section">
+    <div className="panel-section compact-panel-section">
       <div className="section-title row-between">
-        <span>Bridge Connection</span>
+        <span>Bridge</span>
         <button className="secondary-button" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
@@ -168,51 +168,59 @@ function ConnectionPanel({ connection, refreshing, onRefresh, bridgeUrlDraft, on
         <span className="pill">{connection.bridgeUrl || 'bridge unknown'}</span>
         {connection.connected ? <span className="pill">live bridge</span> : <span className="pill">sample mode</span>}
       </div>
-      <div className="node-form-card bridge-config-card">
-        <div className="section-title">Bridge URL</div>
-        <label className="field-label">
-          Workflow Studio bridge target
-          <input className="text-input" value={bridgeUrlDraft} onChange={(event) => onBridgeUrlChange(event.target.value)} />
-        </label>
-        <div className="provider-actions">
-          <button className="primary-button" onClick={onSaveBridgeUrl}>Save bridge URL</button>
-          <button className="secondary-button" onClick={onResetBridgeUrl}>Reset to default</button>
+      <details className="inline-reveal bridge-reveal">
+        <summary>Bridge target</summary>
+        <div className="node-form-card bridge-config-card">
+          <label className="field-label">
+            Workflow Studio bridge target
+            <input className="text-input" value={bridgeUrlDraft} onChange={(event) => onBridgeUrlChange(event.target.value)} />
+          </label>
+          <div className="provider-actions">
+            <button className="primary-button" onClick={onSaveBridgeUrl}>Save bridge URL</button>
+            <button className="secondary-button" onClick={onResetBridgeUrl}>Reset to default</button>
+          </div>
+          <div className="muted small-copy">Use this when the bridge runs on your OpenClaw machine somewhere other than this device’s localhost.</div>
         </div>
-        <div className="muted small-copy">Use this when the bridge runs on your OpenClaw machine somewhere other than this device’s localhost.</div>
-      </div>
+      </details>
     </div>
   )
 }
 
-function SocratesPanel({ connection, workflowText, messages, draftMessage, onDraftChange, onSend, sending }) {
+function SocratesPanel({ connection, workflowText, messages, draftMessage, onDraftChange, onSend, sending, open, onClose }) {
   return (
-    <div className="panel socrates-panel">
-      <div className="section-title row-between">
-        <span>Socrates</span>
-        <span className="pill">authoring chat</span>
-      </div>
-      <div className="muted">Shape or revise the workflow in-app while keeping the authoring lane separate from runtime execution.</div>
-      <div className="chat-log">
-        {messages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow.</div> : null}
-        {messages.map((item, index) => (
-          <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}>
-            <strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong>
-            <div>{item.text}</div>
+    <div className={`chat-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <div className="chat-drawer-backdrop" onClick={onClose} />
+      <div className="chat-drawer-panel panel socrates-panel">
+        <div className="section-title row-between">
+          <div className="chat-drawer-title-wrap">
+            <span>Socrates</span>
+            <span className="pill">authoring chat</span>
           </div>
-        ))}
-      </div>
-      <textarea
-        className="chat-input"
-        value={draftMessage}
-        onChange={(event) => onDraftChange(event.target.value)}
-        placeholder="Ask Socrates to create a workflow, adjust steps, or explain the next change."
-        spellCheck="false"
-      />
-      <div className="row-between">
-        <span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span>
-        <button className="primary-button" disabled={sending || !connection.connected || !draftMessage.trim()} onClick={() => onSend(workflowText)}>
-          {sending ? 'Sending…' : 'Send to Socrates'}
-        </button>
+          <button className="secondary-button" onClick={onClose}>Close</button>
+        </div>
+        <div className="muted">Shape or revise the workflow in-app while keeping the authoring lane separate from runtime execution.</div>
+        <div className="chat-log">
+          {messages.length === 0 ? <div className="muted">Ask Socrates to help create or improve this workflow.</div> : null}
+          {messages.map((item, index) => (
+            <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}>
+              <strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong>
+              <div>{item.text}</div>
+            </div>
+          ))}
+        </div>
+        <textarea
+          className="chat-input"
+          value={draftMessage}
+          onChange={(event) => onDraftChange(event.target.value)}
+          placeholder="Ask Socrates to create a workflow, adjust steps, or explain the next change."
+          spellCheck="false"
+        />
+        <div className="row-between">
+          <span className="muted small-copy">{connection.connected ? 'Uses reachable Mac bridge' : 'Bridge required for live Socrates chat'}</span>
+          <button className="primary-button" disabled={sending || !connection.connected || !draftMessage.trim()} onClick={() => onSend(workflowText)}>
+            {sending ? 'Sending…' : 'Send to Socrates'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -298,9 +306,9 @@ function SchemaBlock({ title, value, defaultOpen = false }) {
 function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider }) {
   if (!node) {
     return (
-      <div className="panel-section grow">
+      <div className="panel-section grow node-detail-panel empty">
         <div className="section-title">Node Details</div>
-        <div className="muted">Select a node to inspect what it does, what it needs, and what it returns.</div>
+        <div className="muted">Click a node in the graph to bring its details into focus.</div>
       </div>
     )
   }
@@ -324,7 +332,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
       : ['Output not produced yet']
 
   return (
-    <div className="panel-section grow node-detail-panel">
+    <div className="panel-section grow node-detail-panel node-detail-animated">
       <div className="node-detail-header">
         <div>
           <div className="section-title">{node.label}</div>
@@ -497,7 +505,7 @@ function App() {
   const [workflows, setWorkflows] = useState(initialWorkflows)
   const [workflowIndex, setWorkflowIndex] = useState(0)
   const [workflowText, setWorkflowText] = useState(JSON.stringify(initialWorkflows[0], null, 2))
-  const [selectedNodeId, setSelectedNodeId] = useState(initialWorkflows[0].nodes[0]?.id)
+  const [selectedNodeId, setSelectedNodeId] = useState('')
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
   const [activeView, setActiveView] = useState('workflows')
@@ -506,6 +514,8 @@ function App() {
   const [socratesMessages, setSocratesMessages] = useState([])
   const [socratesDraft, setSocratesDraft] = useState('')
   const [sendingToSocrates, setSendingToSocrates] = useState(false)
+  const [socratesOpen, setSocratesOpen] = useState(false)
+  const [jsonPanelOpen, setJsonPanelOpen] = useState(false)
   const [oauthStatus, setOauthStatus] = useState(null)
   const [accountsMessage, setAccountsMessage] = useState('')
   const [bridgeUrlDraft, setBridgeUrlDraft] = useState(getSavedBridgeUrl())
@@ -547,9 +557,11 @@ function App() {
   const defaultTriggerNodeId = parsedWorkflow?.entryNodeId ?? parsedWorkflow?.nodes?.find((node) => node.type === 'trigger')?.id
 
   useEffect(() => {
-    if (!selectedNodeId && parsedWorkflow?.nodes?.[0]?.id) {
-      setSelectedNodeId(parsedWorkflow.nodes[0].id)
-      return
+    if (parsedWorkflow?.nodes?.length) {
+      const selectedStillExists = parsedWorkflow.nodes.some((node) => node.id === selectedNodeId)
+      if (!selectedStillExists) {
+        setSelectedNodeId('')
+      }
     }
   }, [parsedWorkflow, selectedNodeId])
 
@@ -586,9 +598,10 @@ function App() {
     const workflow = workflows[index]
     setWorkflowIndex(index)
     setWorkflowText(JSON.stringify(workflow, null, 2))
-    setSelectedNodeId(workflow.nodes[0]?.id)
+    setSelectedNodeId('')
     setRunState(null)
     setSocratesMessages([])
+    setJsonPanelOpen(false)
   }
 
   function handleNewWorkflow() {
@@ -597,7 +610,7 @@ function App() {
     const nextIndex = workflows.length
     setWorkflowIndex(nextIndex)
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
-    setSelectedNodeId(nextWorkflow.nodes[0]?.id)
+    setSelectedNodeId('')
     setRunState(null)
     setSocratesMessages([
       {
@@ -605,6 +618,8 @@ function App() {
         text: 'New workflow created. Ask Socrates to shape the first real version.',
       },
     ])
+    setSocratesOpen(true)
+    setJsonPanelOpen(false)
   }
 
   function handleSelectNode(nodeId) {
@@ -778,75 +793,94 @@ function App() {
           accountsMessage={accountsMessage}
         />
       ) : (
-        <main className="layout app-layout-with-chat">
-          <section className="left-column">
-            <div className="panel hero-panel">
-              <div className="hero-header row-between">
-                <div>
-                  <h2>{parsedWorkflow?.name ?? 'Invalid workflow'}</h2>
-                  <p>{parsedWorkflow?.description ?? 'Fix JSON to continue.'}</p>
+        <>
+          <main className="workflow-redesign-layout">
+            <section className="workflow-stage-column">
+              <div className="panel workflow-stage-panel">
+                <div className="workflow-stage-header row-between">
+                  <div>
+                    <h2>{parsedWorkflow?.name ?? 'Invalid workflow'}</h2>
+                    <p>{parsedWorkflow?.description ?? 'Fix JSON to continue.'}</p>
+                  </div>
+                  <div className="hero-pills">
+                    <span className="pill">{parsedWorkflow?.appId ?? 'unknown-app'}</span>
+                    <span className="pill">v{parsedWorkflow?.version ?? '—'}</span>
+                    <span className="pill">{connection.connected ? 'bridge live' : 'sample mode'}</span>
+                  </div>
                 </div>
-                <div className="hero-pills">
-                  <span className="pill">{parsedWorkflow?.appId ?? 'unknown-app'}</span>
-                  <span className="pill">v{parsedWorkflow?.version ?? '—'}</span>
+
+                <div className="workflow-stage-toolbar">
+                  <div className="workflow-stage-toolbar-left">
+                    <button className="primary-button" onClick={() => handleRun(defaultTriggerNodeId)} disabled={running || !defaultTriggerNodeId || !validation.ok}>
+                      {running ? 'Running…' : 'Run workflow'}
+                    </button>
+                    <button className="secondary-button" onClick={() => setSocratesOpen(true)}>Open Socrates</button>
+                    <button className="secondary-button" onClick={() => setJsonPanelOpen((current) => !current)}>
+                      {jsonPanelOpen ? 'Hide Workflow JSON' : 'Reveal Workflow JSON'}
+                    </button>
+                  </div>
+                  <div className="workflow-stage-toolbar-right muted small-copy">
+                    {selectedNode ? `Selected: ${selectedNode.label}` : 'Select a node to inspect details'}
+                  </div>
+                </div>
+
+                {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
+              </div>
+
+              <div className={`panel node-detail-shell ${selectedNode ? 'visible' : ''}`}>
+                <NodeDetailPanel
+                  node={selectedNode}
+                  tool={selectedTool}
+                  workflow={parsedWorkflow}
+                  runState={runState}
+                  onRunTrigger={handleRun}
+                  onPatchNode={patchSelectedNode}
+                  accounts={connection.accounts || []}
+                  onConnectProvider={handleConnectProvider}
+                />
+              </div>
+
+              <div className="workflow-bottom-grid">
+                <div className="panel">
+                  <RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} />
+                </div>
+                <div className="panel secondary-info-panel">
+                  <ConnectionPanel
+                    connection={connection}
+                    refreshing={refreshingConnection}
+                    onRefresh={refreshConnection}
+                    bridgeUrlDraft={bridgeUrlDraft}
+                    onBridgeUrlChange={setBridgeUrlDraft}
+                    onSaveBridgeUrl={saveBridgeTarget}
+                    onResetBridgeUrl={resetBridgeTarget}
+                  />
+                  <ValidationPanel validation={validation} />
+                  {parsedWorkflow ? <ToolList workflow={parsedWorkflow} /> : null}
                 </div>
               </div>
-              <ConnectionPanel
-                connection={connection}
-                refreshing={refreshingConnection}
-                onRefresh={refreshConnection}
-                bridgeUrlDraft={bridgeUrlDraft}
-                onBridgeUrlChange={setBridgeUrlDraft}
-                onSaveBridgeUrl={saveBridgeTarget}
-                onResetBridgeUrl={resetBridgeTarget}
-              />
-              <ValidationPanel validation={validation} />
-            </div>
 
-            <div className="panel">
-              <div className="section-title">Workflow</div>
-              {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
-            </div>
+              <div className={`panel workflow-json-panel ${jsonPanelOpen ? 'open' : ''}`}>
+                <div className="section-title row-between">
+                  <span>Workflow JSON</span>
+                  <button className="secondary-button" onClick={() => setJsonPanelOpen(false)}>Hide</button>
+                </div>
+                <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
+              </div>
+            </section>
+          </main>
 
-            <SocratesPanel
-              connection={connection}
-              workflowText={workflowText}
-              messages={socratesMessages}
-              draftMessage={socratesDraft}
-              onDraftChange={setSocratesDraft}
-              onSend={handleSendToSocrates}
-              sending={sendingToSocrates}
-            />
-
-            <div className="panel">
-              {parsedWorkflow ? <ToolList workflow={parsedWorkflow} /> : null}
-            </div>
-          </section>
-
-          <aside className="right-column">
-            <div className="panel">
-              <NodeDetailPanel
-                node={selectedNode}
-                tool={selectedTool}
-                workflow={parsedWorkflow}
-                runState={runState}
-                onRunTrigger={handleRun}
-                onPatchNode={patchSelectedNode}
-                accounts={connection.accounts || []}
-                onConnectProvider={handleConnectProvider}
-              />
-            </div>
-
-            <div className="panel workflow-editor-panel">
-              <div className="section-title">Workflow JSON</div>
-              <textarea className="json-editor large" value={workflowText} onChange={(event) => setWorkflowText(event.target.value)} spellCheck="false" />
-            </div>
-
-            <div className="panel">
-              <RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} />
-            </div>
-          </aside>
-        </main>
+          <SocratesPanel
+            connection={connection}
+            workflowText={workflowText}
+            messages={socratesMessages}
+            draftMessage={socratesDraft}
+            onDraftChange={setSocratesDraft}
+            onSend={handleSendToSocrates}
+            sending={sendingToSocrates}
+            open={socratesOpen}
+            onClose={() => setSocratesOpen(false)}
+          />
+        </>
       )}
     </div>
   )

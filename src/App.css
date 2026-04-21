@@ -66,17 +66,6 @@ button {
   gap: 20px;
 }
 
-.app-layout-with-chat {
-  align-items: start;
-}
-
-.left-column,
-.right-column {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-}
-
 .panel {
   background: rgba(13, 19, 37, 0.9);
   border: 1px solid rgba(136, 156, 199, 0.2);
@@ -85,23 +74,13 @@ button {
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.28);
 }
 
-.hero-panel {
-  padding-bottom: 4px;
-}
-
 .panel-section {
   margin-bottom: 14px;
 }
 
-.hero-header h2 {
-  margin: 0;
-  font-size: 1.35rem;
-}
-
-.hero-header p {
-  margin: 8px 0 0;
-  color: #afbad4;
-  max-width: 65ch;
+.compact-panel-section:last-child,
+.panel-section:last-child {
+  margin-bottom: 0;
 }
 
 .row-between {
@@ -112,7 +91,8 @@ button {
 }
 
 .hero-pills,
-.inspector-meta {
+.inspector-meta,
+.node-detail-meta {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -135,9 +115,65 @@ button {
   margin-bottom: 12px;
 }
 
-.diagram-wrap {
+.workflow-redesign-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.workflow-stage-column {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.workflow-stage-panel {
+  padding: 18px;
+}
+
+.workflow-stage-header {
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+
+.workflow-stage-header h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.workflow-stage-header p {
+  margin: 8px 0 0;
+  color: #afbad4;
+  max-width: 72ch;
+}
+
+.workflow-stage-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.workflow-stage-toolbar-left,
+.workflow-stage-toolbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.graph-stage-wrap {
   display: grid;
   gap: 14px;
+}
+
+.graph-stage-topline {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .diagram-explainer {
@@ -159,6 +195,10 @@ button {
     rgba(9, 14, 28, 0.94);
   background-size: 24px 24px, 24px 24px, auto;
   border: 1px solid rgba(130, 152, 201, 0.18);
+}
+
+.graph-stage-surface {
+  min-height: 520px;
 }
 
 .diagram-svg {
@@ -190,6 +230,11 @@ button {
   border-radius: 16px;
   padding: 12px;
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.diagram-node:hover {
+  transform: translateY(-2px);
 }
 
 .diagram-node.selected {
@@ -228,34 +273,142 @@ button {
   word-break: break-word;
 }
 
-.two-up {
+.workflow-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.secondary-info-panel {
+  display: grid;
   gap: 16px;
+}
+
+.node-detail-shell {
+  opacity: 0;
+  transform: translateY(28px);
+  pointer-events: none;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 220ms ease, transform 220ms ease, max-height 260ms ease;
+}
+
+.node-detail-shell.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  max-height: 4000px;
+}
+
+.node-detail-panel.empty {
+  min-height: 120px;
+}
+
+.node-detail-animated {
+  animation: nodeDetailRise 220ms ease;
+}
+
+@keyframes nodeDetailRise {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.node-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.node-detail-grid,
+.config-grid,
+.field-grid,
+.accounts-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.node-detail-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-bottom: 12px;
+}
+
+.node-info-card,
+.node-form-card,
+.account-callout,
+.account-banner,
+.empty-state,
+.tool-item,
+.error-item,
+.event-item,
+.status-item,
+.account-item,
+.chat-bubble,
+.node-action-card {
+  background: rgba(19, 28, 50, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.node-info-card,
+.node-form-card,
+.account-callout,
+.account-banner,
+.empty-state,
+.chat-bubble,
+.node-action-card {
+  padding: 12px;
+}
+
+.node-info-card pre,
+.schema-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.node-info-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.node-action-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .edge-list,
 .tool-list,
 .error-list,
 .event-log,
-.run-status-grid {
+.run-status-grid,
+.account-list,
+.chat-log {
   display: grid;
   gap: 10px;
 }
 
-.edge-item,
 .tool-item,
 .error-item,
 .event-item,
-.status-item {
+.status-item,
+.account-item {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border-radius: 12px;
-  border: 1px solid rgba(123, 145, 194, 0.16);
 }
 
 .error-item,
@@ -265,10 +418,12 @@ button {
   flex-direction: column;
 }
 
-.workflow-editor-panel,
-.inspector-panel {
-  display: grid;
-  gap: 12px;
+.workflow-json-panel {
+  display: none;
+}
+
+.workflow-json-panel.open {
+  display: block;
 }
 
 .json-editor {
@@ -324,52 +479,64 @@ select {
   margin-top: 10px;
 }
 
-.trigger-panel {
-  display: grid;
-  gap: 10px;
-  margin: 12px 0 14px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border: 1px solid rgba(123, 145, 194, 0.16);
-}
-
-.story-preview {
-  margin-top: 16px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border: 1px solid rgba(123, 145, 194, 0.16);
-}
-
-.story-preview pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #dfe9ff;
-  font-family: inherit;
-  line-height: 1.5;
-}
-
 .socrates-panel {
   display: grid;
   gap: 12px;
 }
 
-.chat-log {
-  display: grid;
-  gap: 10px;
-  max-height: 320px;
-  overflow: auto;
+.chat-drawer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 40;
 }
 
-.chat-bubble {
+.chat-drawer.open {
+  pointer-events: auto;
+}
+
+.chat-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 18, 0.58);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.chat-drawer.open .chat-drawer-backdrop {
+  opacity: 1;
+}
+
+.chat-drawer-panel {
+  position: relative;
+  width: min(520px, 100vw);
+  height: 100vh;
+  border-radius: 0;
+  border-left: 1px solid rgba(136, 156, 199, 0.2);
+  transform: translateX(100%);
+  transition: transform 220ms ease;
   display: grid;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(123, 145, 194, 0.16);
-  background: rgba(19, 28, 50, 0.92);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.chat-drawer.open .chat-drawer-panel {
+  transform: translateX(0);
+}
+
+.chat-drawer-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chat-log {
+  max-height: none;
+  overflow: auto;
 }
 
 .chat-bubble.user {
@@ -391,10 +558,6 @@ select {
   min-height: 110px;
 }
 
-.compact-editor {
-  min-height: 180px;
-}
-
 .text-input {
   width: 100%;
   border-radius: 12px;
@@ -408,39 +571,6 @@ select {
   display: grid;
   gap: 8px;
   color: #dbe5fb;
-}
-
-.field-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.node-form-card {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0 14px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border: 1px solid rgba(123, 145, 194, 0.16);
-}
-
-.working-node-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.working-node-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border-radius: 12px;
-  border: 1px solid rgba(123, 145, 194, 0.16);
 }
 
 .small-copy {
@@ -483,33 +613,12 @@ select {
   text-decoration: none;
 }
 
-.account-callout {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(34, 48, 86, 0.96);
-  border: 1px solid rgba(123, 145, 194, 0.2);
-}
-
-.account-banner {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(34, 48, 86, 0.96);
-  border: 1px solid rgba(123, 145, 194, 0.2);
-  color: #dfe9ff;
-}
-
 .accounts-page {
   display: grid;
   gap: 16px;
 }
 
 .accounts-grid {
-  display: grid;
-  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
@@ -519,7 +628,7 @@ select {
 }
 
 .bridge-config-card {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .provider-title {
@@ -534,44 +643,55 @@ select {
   align-items: center;
 }
 
-.account-list {
-  display: grid;
-  gap: 10px;
-}
-
-.account-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border-radius: 12px;
-  border: 1px solid rgba(123, 145, 194, 0.16);
-}
-
-.empty-state {
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(19, 28, 50, 0.92);
-  border: 1px solid rgba(123, 145, 194, 0.16);
-}
-
 .oauth-status-copy {
   margin-top: -4px;
 }
 
+.inline-reveal {
+  margin-top: 12px;
+}
+
+.inline-reveal summary,
+.schema-block summary {
+  cursor: pointer;
+  color: #dfe9ff;
+  font-weight: 600;
+}
+
+.schema-block {
+  margin-top: 10px;
+}
+
 @media (max-width: 1100px) {
-  .layout {
+  .workflow-bottom-grid {
     grid-template-columns: 1fr;
   }
 
-  .two-up {
-    grid-template-columns: 1fr;
-  }
-
-  .account-item {
+  .account-item,
+  .node-action-card,
+  .workflow-stage-header,
+  .workflow-stage-toolbar,
+  .node-detail-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .graph-stage-surface {
+    min-height: 420px;
+  }
+
+  .chat-drawer-panel {
+    width: 100vw;
   }
 }
