@@ -93,6 +93,12 @@ describe('App', () => {
     await screen.findByText(/Applied a structured patch/i)
     expect(screen.getByText('Children Story Flow v2')).toBeInTheDocument()
 
+    const socratesCall = fetch.mock.calls.find(([url]) => String(url).includes('/api/socrates-chat'))
+    const requestBody = JSON.parse(socratesCall[1].body)
+    expect(requestBody.userMessage).toBe('Rename this workflow.')
+    expect(requestBody.workflowContext.activeWorkflow.id).toBe('childrens-story-book')
+    expect(requestBody.workflowContext.editingIntent).toBe('editing_an_existing_saved_workflow')
+
     await waitFor(() => {
       const saved = JSON.parse(window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY))
       expect(saved[0].name).toBe('Children Story Flow v2')

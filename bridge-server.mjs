@@ -582,9 +582,10 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'POST' && url.pathname === '/api/socrates-chat') {
       const parsedBody = await readJsonBody(req)
-      const message = parsedBody.message || 'Help shape this workflow.'
+      const userMessage = parsedBody.userMessage || parsedBody.message || 'Help shape this workflow.'
       const workflow = parsedBody.workflow || null
       const workflowText = workflow ? JSON.stringify(workflow, null, 2) : '{}'
+      const workflowContextText = parsedBody.workflowContext ? JSON.stringify(parsedBody.workflowContext, null, 2) : '{}'
       const prompt = [
         'You are Socrates, the workflow authoring agent for OpenClaw Workflow Studio.',
         'Return strict JSON only. Do not add markdown fences or any prose outside the JSON object.',
@@ -604,10 +605,16 @@ const server = http.createServer(async (req, res) => {
         'Prefer patch_workflow for local edits and replace_workflow for broad rewrites.',
         'Any workflow you return must remain internally consistent: valid node ids, valid edge endpoints, and a real entryNodeId.',
         'Be concise in reply. The app will deterministically apply the returned change.',
+        'Treat the provided workflow as the single active workflow the user is editing right now.',
+        'Use the active workflow identity, saved-vs-draft status, trigger, and key nodes to disambiguate requests like "rename it", "add a step", or "fix this flow".',
+        'When the active workflow is an existing saved workflow, preserve its purpose and ids unless the user explicitly requests a replacement.',
+        'When the active workflow is a new draft, turn the request into a concrete workflow patch or replacement rather than generic advice.',
+        'Active workflow context:',
+        workflowContextText,
         'Current workflow JSON:',
         workflowText,
         'User request:',
-        message,
+        userMessage,
       ].join('\n\n')
 
       const { stdout } = await execFileAsync(

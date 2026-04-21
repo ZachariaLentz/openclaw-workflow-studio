@@ -706,7 +706,10 @@ function App() {
     setSocratesMessages((current) => [...current, { role: 'user', text }])
     setSocratesDraft('')
     try {
-      const result = await sendToSocrates(text, parsedWorkflow)
+      const result = await sendToSocrates(text, parsedWorkflow, {
+        activeWorkflowId,
+        libraryWorkflows: workflowsRef.current,
+      })
       let assistantText = result.reply || 'Socrates responded without a summary.'
       if (result.change?.type && result.change.type !== 'none') {
         const nextWorkflow = applySocratesChange(parsedWorkflow, result.change)
