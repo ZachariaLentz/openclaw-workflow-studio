@@ -71,6 +71,6 @@ describe('sendToSocrates', () => {
       triggerLabel: 'Start workflow',
     })
     expect(request.message).toContain('Turn this into an approval workflow.')
-    expect(request.message).toContain('Children’s Story: Manual Trigger')
+    expect(request.message).toContain(sampleWorkflows[0].name)
   })
 })

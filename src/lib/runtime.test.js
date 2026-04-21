@@ -3,8 +3,10 @@ import { sampleWorkflows } from '../data/workflows'
 import { runWorkflow } from './runtime'
 
 describe('runWorkflow', () => {
+  const storyWorkflow = () => structuredClone(sampleWorkflows.find((workflow) => workflow.id === 'childrens-story-book'))
+
   it('completes the story flow and skips Google Drive when no account is connected', async () => {
-    const workflow = structuredClone(sampleWorkflows[0])
+    const workflow = storyWorkflow()
     const state = await runWorkflow(workflow)
 
     expect(state.status).toBe('completed')
@@ -19,7 +21,7 @@ describe('runWorkflow', () => {
   })
 
   it('runs from the manual trigger node and produces downstream AI outputs', async () => {
-    const workflow = structuredClone(sampleWorkflows[0])
+    const workflow = storyWorkflow()
     const state = await runWorkflow(workflow, undefined, { triggerNodeId: 'manual-trigger' })
 
     expect(state.nodeOutputs['structured-prompt-story-idea']).toMatchObject({

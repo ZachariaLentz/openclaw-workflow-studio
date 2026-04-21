@@ -151,6 +151,27 @@ These are intentionally not in the immediate build set, but they are worth prese
 - Webhook Trigger
 - Schedule Trigger
 
+## Roadmap change: Schedule Trigger is now promoted
+Schedule Trigger should move from future-candidate status into the active next-build surface.
+
+Reason:
+- the scheduled mission briefing workflow now depends on it
+- it pressures real runtime integration rather than fake local timing
+- it is a better trigger-system test than adding more content-generation nodes first
+
+Recommended updated build order for the next workflow phase:
+1. Schedule Trigger
+2. Merge Inputs / Aggregate
+3. Send Message
+4. Prioritize / Classify
+5. Branch
+6. Calendar Fetch
+7. Weather Fetch
+8. System / Project Status Fetch
+9. Persist Run Record
+
+Manual Trigger remains part of v1, but Schedule Trigger is now the next important trigger primitive.
+
 ### Output / response candidates
 - Webhook Response
 - Explicit Return / Response shaping node for API-style workflows

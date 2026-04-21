@@ -58,7 +58,7 @@ describe('App', () => {
     expect(screen.getByRole('combobox', { name: /Sort/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New workflow' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i })).toBeInTheDocument()
-    expect(screen.getByText(/1 saved/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 saved/i)).toBeInTheDocument()
   })
 
   it('opens the workflow into a mobile workspace with persistent tabs', async () => {
@@ -107,8 +107,9 @@ describe('App', () => {
 
     await waitFor(() => {
       const saved = JSON.parse(window.localStorage.getItem(WORKFLOW_LIBRARY_STORAGE_KEY))
-      expect(saved[0].name).toBe('Children Story Flow v2')
-      expect(saved[0].description).toBe('Updated by Socrates.')
+      const updated = saved.find((workflow) => workflow.id === 'childrens-story-book')
+      expect(updated.name).toBe('Children Story Flow v2')
+      expect(updated.description).toBe('Updated by Socrates.')
     })
   })
 })

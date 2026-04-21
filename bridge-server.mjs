@@ -19,6 +19,8 @@ const PUBLIC_BASE_URL = process.env.OCWS_PUBLIC_BASE_URL || `http://${HOST}:${PO
 const GOOGLE_REDIRECT_URI = process.env.OCWS_GOOGLE_REDIRECT_URI || `${PUBLIC_BASE_URL.replace(/\/$/, '')}/oauth/google/callback`
 const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email profile'
 const oauthConnections = new Map()
+const WORKFLOW_SCHEDULES_PATH = path.join(LOCAL_DIR, 'workflow-schedules.json')
+
 
 const PROVIDERS = [
   {
@@ -154,6 +156,175 @@ async function loadGoogleTokens() {
 
 async function saveGoogleTokens(tokens) {
   await writeJsonFile(GOOGLE_TOKENS_PATH, tokens)
+}
+
+async function loadWorkflowSchedules() {
+  return readJsonFileIfExists(WORKFLOW_SCHEDULES_PATH, { schedules: [] })
+}
+
+async function saveWorkflowSchedules(value) {
+  await writeJsonFile(WORKFLOW_SCHEDULES_PATH, value)
+}
+
+function buildScheduleSummary(config = {}) {
+  if (config.scheduleSummary) return String(config.scheduleSummary)
+  if (config.scheduleMode === 'once' && config.runAt) return `Once at ${config.runAt}`
+  if (config.scheduleMode === 'every' && config.every) return `Every ${config.every}`
+  if (config.scheduleMode === 'cron' && config.cronExpression) return `Cron ${config.cronExpression}`
+  return 'Scheduled workflow trigger'
+}
+
+function buildWorkflowSchedulePayload(schedule) {
+  const action = {
+    type: 'workflow.schedule.trigger',
+    workflowId: schedule.workflowId,
+    nodeId: schedule.nodeId,
+    scheduleId: schedule.id,
+    triggerMode: 'schedule',
+    scheduleMode: schedule.scheduleMode,
+    timezone: schedule.timezone,
+  }
+
+  if (schedule.cronExpression) action.cronExpression = schedule.cronExpression
+  if (schedule.every) action.every = schedule.every
+  if (schedule.runAt) action.runAt = schedule.runAt
+
+  const message = [
+    'Reminder: this is a Workflow Studio schedule trigger.',
+    JSON.stringify(action),
+  ].join('\n')
+
+  return {
+    action,
+    message,
+  }
+}
+
+function shouldPassTimezone(schedule = {}) {
+  if (schedule.scheduleMode === 'cron') return Boolean(schedule.timezone)
+  if (schedule.scheduleMode === 'once') {
+    return Boolean(schedule.timezone && schedule.runAt && !/[zZ]|[+-]\d\d(?::?\d\d)?$/.test(schedule.runAt))
+  }
+  return false
+}
+
+function buildCronArgsFromSchedule(schedule) {
+  const args = ['cron', 'add', '--json', '--name', schedule.name]
+
+  if (schedule.scheduleMode === 'once') {
+    args.push('--at', schedule.runAt)
+  } else if (schedule.scheduleMode === 'every') {
+    args.push('--every', schedule.every)
+  } else if (schedule.scheduleMode === 'cron') {
+    args.push('--cron', schedule.cronExpression)
+  } else {
+    throw new Error(`Unsupported schedule mode: ${schedule.scheduleMode}`)
+  }
+
+  if (shouldPassTimezone(schedule)) args.push('--tz', schedule.timezone)
+  if (schedule.sessionTarget) args.push('--session', schedule.sessionTarget)
+  if (schedule.sessionKey) args.push('--session-key', schedule.sessionKey)
+
+  const payload = buildWorkflowSchedulePayload(schedule)
+  if (schedule.sessionTarget === 'main') args.push('--system-event', payload.message)
+  else args.push('--message', payload.message)
+
+  if (schedule.deliver === false) args.push('--no-deliver')
+  else args.push('--announce')
+  if (schedule.enabled === false) args.push('--disabled')
+  args.push('--wake', schedule.wakeMode || 'now')
+
+  return args
+}
+
+function buildCronEditArgs(jobId, patch = {}) {
+  const args = ['cron', 'edit', jobId]
+  if (patch.name) args.push('--name', patch.name)
+  if (patch.scheduleMode === 'once' && patch.runAt) args.push('--at', patch.runAt)
+  if (patch.scheduleMode === 'every' && patch.every) args.push('--every', patch.every)
+  if (patch.scheduleMode === 'cron' && patch.cronExpression) args.push('--cron', patch.cronExpression)
+  if (shouldPassTimezone(patch)) args.push('--tz', patch.timezone)
+  if (patch.sessionTarget) args.push('--session', patch.sessionTarget)
+  if (patch.sessionKey) args.push('--session-key', patch.sessionKey)
+
+  const payload = buildWorkflowSchedulePayload(patch)
+  if (patch.sessionTarget === 'main') args.push('--system-event', payload.message)
+  else args.push('--message', payload.message)
+
+  if (patch.deliver === false) args.push('--no-deliver')
+  else args.push('--announce')
+  if (patch.enabled === true) args.push('--enable')
+  if (patch.enabled === false) args.push('--disable')
+  return args
+}
+
+function extractCronJobIdFromJson(raw) {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed.jobId || parsed.id || parsed.job?.jobId || parsed.job?.id || parsed.jobs?.[0]?.id || null
+  } catch {
+    return null
+  }
+}
+
+function normalizeStoredSchedule(schedule) {
+  const payload = schedule.binding?.payload || buildWorkflowSchedulePayload(schedule)
+
+  const normalizedBase = {
+    id: schedule.id,
+    workflowId: schedule.workflowId,
+    nodeId: schedule.nodeId,
+    name: schedule.name,
+    scheduleMode: schedule.scheduleMode,
+    cronExpression: schedule.cronExpression || null,
+    every: schedule.every || null,
+    runAt: schedule.runAt || null,
+    timezone: schedule.timezone || 'UTC',
+    enabled: schedule.enabled !== false,
+    deliver: schedule.deliver !== false,
+    wakeMode: schedule.wakeMode || 'now',
+    sessionTarget: schedule.sessionTarget || 'isolated',
+    sessionKey: schedule.sessionKey || null,
+  }
+
+  return {
+    ...normalizedBase,
+    message: payload.message,
+    scheduleSummary: buildScheduleSummary(normalizedBase),
+    cronJobId: schedule.cronJobId || null,
+    cronRaw: schedule.cronRaw || null,
+    binding: {
+      payload,
+      lastVerifiedAt: schedule.binding?.lastVerifiedAt || null,
+    },
+    createdAt: schedule.createdAt || new Date().toISOString(),
+    updatedAt: schedule.updatedAt || new Date().toISOString(),
+  }
+}
+
+async function upsertWorkflowScheduleRecord(nextSchedule) {
+  const store = await loadWorkflowSchedules()
+  const schedules = Array.isArray(store.schedules) ? store.schedules : []
+  const normalized = normalizeStoredSchedule(nextSchedule)
+  const index = schedules.findIndex((item) => item.id === normalized.id)
+  const next = index >= 0
+    ? schedules.map((item, idx) => idx === index ? { ...item, ...normalized } : item)
+    : [normalized, ...schedules]
+  await saveWorkflowSchedules({ schedules: next })
+  return normalized
+}
+
+async function removeWorkflowScheduleRecord(scheduleId) {
+  const store = await loadWorkflowSchedules()
+  const schedules = Array.isArray(store.schedules) ? store.schedules : []
+  await saveWorkflowSchedules({ schedules: schedules.filter((item) => item.id !== scheduleId) })
+}
+
+async function findWorkflowScheduleRecord(scheduleId) {
+  const store = await loadWorkflowSchedules()
+  const schedules = Array.isArray(store.schedules) ? store.schedules : []
+  return schedules.find((item) => item.id === scheduleId) || null
 }
 
 function googleClientConfigValid(config) {
@@ -837,6 +1008,155 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/workflows/schedules') {
+      const store = await loadWorkflowSchedules()
+      sendJson(res, 200, {
+        ok: true,
+        schedules: Array.isArray(store.schedules) ? store.schedules : [],
+      })
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/workflows/schedules') {
+      const parsedBody = await readJsonBody(req)
+      const scheduleId = `schedule_${crypto.randomUUID()}`
+      const schedule = normalizeStoredSchedule({
+        id: scheduleId,
+        workflowId: parsedBody.workflowId || 'unknown-workflow',
+        nodeId: parsedBody.nodeId || 'schedule-trigger',
+        name: parsedBody.name || `Workflow schedule ${scheduleId.slice(-6)}`,
+        scheduleMode: parsedBody.scheduleMode || 'cron',
+        cronExpression: parsedBody.cronExpression || null,
+        every: parsedBody.every || null,
+        runAt: parsedBody.runAt || null,
+        timezone: parsedBody.timezone || 'UTC',
+        enabled: parsedBody.enabled !== false,
+        deliver: parsedBody.deliver !== false,
+        wakeMode: parsedBody.wakeMode || 'now',
+        sessionTarget: parsedBody.sessionTarget || 'isolated',
+        sessionKey: parsedBody.sessionKey || null,
+        message: parsedBody.message || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+
+      try {
+        const cronResult = await runOpenClaw(buildCronArgsFromSchedule(schedule))
+        const cronRaw = cronResult.stdout || cronResult.stderr || ''
+        const cronJobId = extractCronJobIdFromJson(cronRaw)
+        const stored = await upsertWorkflowScheduleRecord({
+          ...schedule,
+          cronJobId,
+          cronRaw,
+          binding: {
+            payload: buildWorkflowSchedulePayload(schedule),
+            lastVerifiedAt: new Date().toISOString(),
+          },
+        })
+        sendJson(res, 200, { ok: true, schedule: stored })
+      } catch (error) {
+        sendError(res, 502, 'schedule_create_failed', error?.message || String(error))
+      }
+      return
+    }
+
+    const workflowScheduleMatch = url.pathname.match(/^\/api\/workflows\/schedules\/([^/]+)$/)
+    if (workflowScheduleMatch && req.method === 'PATCH') {
+      const scheduleId = decodeURIComponent(workflowScheduleMatch[1])
+      const existing = await findWorkflowScheduleRecord(scheduleId)
+      if (!existing) {
+        sendError(res, 404, 'schedule_not_found', `No workflow schedule found for ${scheduleId}.`)
+        return
+      }
+
+      const parsedBody = await readJsonBody(req)
+      const nextSchedule = normalizeStoredSchedule({
+        ...existing,
+        ...parsedBody,
+        id: existing.id,
+        updatedAt: new Date().toISOString(),
+      })
+
+      try {
+        if (!existing.cronJobId) {
+          sendError(res, 400, 'schedule_unbound', 'Workflow schedule does not have a bound cron job id yet.')
+          return
+        }
+
+        const cronResult = await runOpenClaw(buildCronEditArgs(existing.cronJobId, nextSchedule))
+        const stored = await upsertWorkflowScheduleRecord({
+          ...nextSchedule,
+          cronRaw: cronResult.stdout || cronResult.stderr || existing.cronRaw || null,
+          binding: {
+            payload: buildWorkflowSchedulePayload(nextSchedule),
+            lastVerifiedAt: new Date().toISOString(),
+          },
+        })
+        sendJson(res, 200, { ok: true, schedule: stored })
+      } catch (error) {
+        sendError(res, 502, 'schedule_update_failed', error?.message || String(error))
+      }
+      return
+    }
+
+    if (workflowScheduleMatch && req.method === 'DELETE') {
+      const scheduleId = decodeURIComponent(workflowScheduleMatch[1])
+      const existing = await findWorkflowScheduleRecord(scheduleId)
+      if (!existing) {
+        sendError(res, 404, 'schedule_not_found', `No workflow schedule found for ${scheduleId}.`)
+        return
+      }
+
+      try {
+        if (existing.cronJobId) {
+          await runOpenClaw(['cron', 'rm', existing.cronJobId, '--json'])
+        }
+        await removeWorkflowScheduleRecord(scheduleId)
+        sendJson(res, 200, { ok: true, removed: true, scheduleId })
+      } catch (error) {
+        sendError(res, 502, 'schedule_delete_failed', error?.message || String(error))
+      }
+      return
+    }
+
+    const workflowScheduleRunMatch = url.pathname.match(/^\/api\/workflows\/schedules\/([^/]+)\/run$/)
+    if (workflowScheduleRunMatch && req.method === 'POST') {
+      const scheduleId = decodeURIComponent(workflowScheduleRunMatch[1])
+      const existing = await findWorkflowScheduleRecord(scheduleId)
+      if (!existing) {
+        sendError(res, 404, 'schedule_not_found', `No workflow schedule found for ${scheduleId}.`)
+        return
+      }
+
+      if (!existing.cronJobId) {
+        sendError(res, 400, 'schedule_unbound', 'Workflow schedule does not have a bound cron job id yet.')
+        return
+      }
+
+      try {
+        const result = await runOpenClaw(['cron', 'run', existing.cronJobId])
+        const stored = await upsertWorkflowScheduleRecord({
+          ...existing,
+          binding: {
+            ...(existing.binding || {}),
+            payload: existing.binding?.payload || buildWorkflowSchedulePayload(existing),
+            lastVerifiedAt: new Date().toISOString(),
+          },
+          updatedAt: new Date().toISOString(),
+        })
+        sendJson(res, 200, {
+          ok: true,
+          scheduleId,
+          cronJobId: existing.cronJobId,
+          raw: result.stdout || result.stderr || '',
+          schedule: stored,
+        })
+      } catch (error) {
+        sendError(res, 502, 'schedule_run_failed', error?.message || String(error))
+      }
+      return
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/accounts/providers') {
       sendJson(res, 200, {
         ok: true,
@@ -1063,6 +1383,8 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`OpenClaw Workflow Studio bridge listening on http://${HOST}:${PORT}`)
+const ACTIVE_PORT = Number(process.env.PORT || process.env.OCWS_BRIDGE_PORT || 4318)
+
+server.listen(ACTIVE_PORT, HOST, () => {
+  console.log(`OpenClaw Workflow Studio bridge listening on http://${HOST}:${ACTIVE_PORT}`)
 })

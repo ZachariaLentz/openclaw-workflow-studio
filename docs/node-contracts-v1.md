@@ -229,8 +229,68 @@ End the workflow with a visible in-app result.
 - final result is visible and understandable in the app
 - workflow can complete with this node as a valid terminal path
 
+## 9. Schedule Trigger
+
+### Purpose
+Start a workflow from a real adjustable time-based schedule backed by an OpenClaw cron job.
+
+### Required configuration
+- schedule mode
+- timezone
+- enabled state
+
+### Supported schedule modes
+- once
+- every interval
+- cron expression
+
+### Required mode-specific configuration
+For `once`:
+- absolute timestamp
+
+For `every interval`:
+- interval duration
+- optional anchor/start time
+
+For `cron expression`:
+- cron expression string
+
+### Optional configuration
+- human-readable label
+- run context payload
+- quiet-hours policy later
+- backend binding metadata stored by the system, not hand-edited by the user
+
+### Inputs
+- none
+
+### Outputs
+- run start event
+- trigger metadata including:
+  - trigger type
+  - trigger time
+  - schedule mode
+  - timezone
+  - cron job id
+  - human-readable schedule summary
+
+### Failure behavior
+- invalid schedule config blocks save or activation
+- cron creation/update failure is surfaced clearly
+- disabled trigger does not fire and is visibly marked disabled
+- deleted workflow or broken cron binding is surfaced honestly in the app
+
+### Fully usable means
+- node creates or updates a real OpenClaw cron job
+- schedule changes in the app update the real backend schedule
+- disabling the node disables the real cron job
+- deleting the node or workflow removes or detaches the cron job appropriately
+- a real scheduled event can start the workflow through the intended runtime path
+- trigger metadata is visible in workflow run state
+
 ## Contract design notes
 - Workflow-specific behavior should be carried by configuration, prompt templates, and field mapping, not bespoke node types.
 - Socrates should help author node configuration and output expectations.
 - Daedalus or the runtime lane should execute the configured node behavior.
+- New node behavior that Socrates depends on must be reflected in Socrates-facing docs during the same work block or before handoff.
 - Future nodes can extend this document once the v1 surface is stable.

@@ -7,7 +7,16 @@ import { editStory, generateStoryIdea, saveFileToGoogleDrive, writeStory } from 
 import { sendToSocrates } from './lib/socrates'
 import { applySocratesChange } from './lib/socratesProtocol'
 import { createBlankWorkflow } from './lib/newWorkflow'
-import { connectGoogleAccount, connectProvider, getGoogleConnectionStatus, testAccount } from './lib/bridge'
+import {
+  connectGoogleAccount,
+  connectProvider,
+  createWorkflowSchedule,
+  deleteWorkflowSchedule,
+  getGoogleConnectionStatus,
+  testAccount,
+  testWorkflowSchedule,
+  updateWorkflowSchedule,
+} from './lib/bridge'
 import { getCompatibleAccounts, getToolRequirements } from './lib/accounts'
 import { clearBridgeUrl, getDefaultBridgeUrl, getSavedBridgeUrl, saveBridgeUrl } from './lib/bridgeConfig'
 import { buildWorkflowLibraryView, loadWorkflowLibrary, touchWorkflowOpened, upsertWorkflowInLibrary } from './lib/workflowLibrary'
@@ -388,7 +397,7 @@ function SchemaBlock({ title, value, defaultOpen = false }) {
   )
 }
 
-function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider }) {
+function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider, onSaveSchedule, onRunScheduleNow, onDeleteSchedule, scheduleBusy }) {
   if (!node) return null
   const incomingEdges = workflow.edges.filter((edge) => edge.to === node.id)
   const outgoingEdges = workflow.edges.filter((edge) => edge.from === node.id)
@@ -400,6 +409,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
   const latestInputNodeId = incomingEdges[incomingEdges.length - 1]?.from
   const latestInput = latestInputNodeId ? runState?.nodeOutputs?.[latestInputNodeId] : null
   const canTrigger = node.type === 'trigger' && workflow.entryNodeId === node.id
+  const isScheduleTrigger = node.toolId === 'trigger.schedule'
 
   return (
     <div className="n8n-like-popover mobile-inspector">
@@ -418,6 +428,39 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         <div className="node-action-card">
           <strong>Run from this node</strong>
           <button className="primary-button" onClick={() => onRunTrigger(node.id)}>{node.config?.triggerLabel ?? 'Start workflow'}</button>
+        </div>
+      ) : null}
+
+      {isScheduleTrigger ? (
+        <div className="node-info-card">
+          <div className="section-title">Schedule</div>
+          <div className="config-grid">
+            <label className="field-label">
+              Mode
+              <select value={node.config?.scheduleMode ?? 'cron'} onChange={(event) => onPatchNode({ config: { ...node.config, scheduleMode: event.target.value } })}>
+                <option value="cron">Cron</option>
+                <option value="every">Every</option>
+                <option value="once">Once</option>
+              </select>
+            </label>
+            {node.config?.scheduleMode === 'cron' ? <label className="field-label">Cron<input className="text-input" value={node.config?.cronExpression ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, cronExpression: event.target.value } })} /></label> : null}
+            {node.config?.scheduleMode === 'every' ? <label className="field-label">Every<input className="text-input" value={node.config?.every ?? node.config?.everyMinutes ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, every: event.target.value, everyMinutes: undefined } })} placeholder="1h" /></label> : null}
+            {node.config?.scheduleMode === 'once' ? <label className="field-label">Run At<input className="text-input" value={node.config?.runAt ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, runAt: event.target.value } })} placeholder="2026-04-22T07:00" /></label> : null}
+            <label className="field-label">Timezone<input className="text-input" value={node.config?.timezone ?? 'UTC'} onChange={(event) => onPatchNode({ config: { ...node.config, timezone: event.target.value } })} /></label>
+            <label className="field-label checkbox-field">
+              <input type="checkbox" checked={node.config?.enabled !== false} onChange={(event) => onPatchNode({ config: { ...node.config, enabled: event.target.checked } })} />
+              <span>Enabled</span>
+            </label>
+          </div>
+          <div className="hero-pills">
+            <span className="pill">{node.config?.cronJobId ? 'bound' : 'unbound'}</span>
+            <span className="pill">{node.config?.scheduleSummary || 'No saved schedule yet'}</span>
+          </div>
+          <div className="provider-actions">
+            <button className="primary-button" onClick={() => onSaveSchedule(node)} disabled={scheduleBusy}>{scheduleBusy ? 'Saving…' : node.config?.cronJobId ? 'Update schedule' : 'Create schedule'}</button>
+            <button className="secondary-button" onClick={() => onRunScheduleNow(node)} disabled={scheduleBusy || !node.config?.cronJobId}>Run now</button>
+            <button className="secondary-button" onClick={() => onDeleteSchedule(node)} disabled={scheduleBusy || !node.config?.cronJobId}>Delete</button>
+          </div>
         </div>
       ) : null}
 
@@ -753,6 +796,7 @@ function App() {
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 40, y: 24 })
   const [lastRouteByWorkflow, setLastRouteByWorkflow] = useState({})
+  const [runningSchedule, setRunningSchedule] = useState(false)
   const workflowsRef = useRef(workflows)
   const deferredQuery = useDeferredValue(libraryQuery)
 
@@ -922,6 +966,90 @@ function App() {
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
   }
 
+  async function handleSaveSchedule(node) {
+    if (!parsedWorkflow || !node || node.toolId !== 'trigger.schedule') return
+    setRunningSchedule(true)
+    try {
+      const payload = {
+        workflowId: parsedWorkflow.id,
+        nodeId: node.id,
+        name: node.config?.triggerLabel || node.label,
+        scheduleMode: node.config?.scheduleMode || 'cron',
+        cronExpression: node.config?.cronExpression || null,
+        every: node.config?.every || null,
+        runAt: node.config?.runAt || null,
+        timezone: node.config?.timezone || 'UTC',
+        enabled: node.config?.enabled !== false,
+        deliver: false,
+        wakeMode: 'now',
+        sessionTarget: 'isolated',
+      }
+
+      const response = node.config?.scheduleBindingId
+        ? await updateWorkflowSchedule(node.config.scheduleBindingId, payload)
+        : await createWorkflowSchedule(payload)
+
+      const saved = response.schedule
+      setAccountsMessage(`Schedule ${node.config?.scheduleBindingId ? 'updated' : 'created'}: ${saved.scheduleSummary}`)
+      patchSelectedNode({
+        config: {
+          ...node.config,
+          scheduleBindingId: saved.id,
+          cronJobId: saved.cronJobId,
+          scheduleMode: saved.scheduleMode,
+          cronExpression: saved.cronExpression ?? node.config?.cronExpression ?? '',
+          every: saved.every ?? '',
+          runAt: saved.runAt ?? '',
+          timezone: saved.timezone,
+          enabled: saved.enabled,
+          scheduleSummary: saved.scheduleSummary,
+        },
+      })
+      await refreshConnection()
+    } catch (error) {
+      setAccountsMessage(`Schedule save failed: ${error.message}`)
+    } finally {
+      setRunningSchedule(false)
+    }
+  }
+
+  async function handleRunScheduleNow(node) {
+    if (!node?.config?.scheduleBindingId) return
+    setRunningSchedule(true)
+    try {
+      const response = await testWorkflowSchedule(node.config.scheduleBindingId)
+      setAccountsMessage(`Schedule run queued: ${response.cronJobId}`)
+      if (node.id === defaultTriggerNodeId) {
+        await handleRun(node.id)
+      }
+    } catch (error) {
+      setAccountsMessage(`Schedule run failed: ${error.message}`)
+    } finally {
+      setRunningSchedule(false)
+    }
+  }
+
+  async function handleDeleteSchedule(node) {
+    if (!node?.config?.scheduleBindingId) return
+    setRunningSchedule(true)
+    try {
+      await deleteWorkflowSchedule(node.config.scheduleBindingId)
+      setAccountsMessage('Schedule deleted.')
+      patchSelectedNode({
+        config: {
+          ...node.config,
+          scheduleBindingId: null,
+          cronJobId: null,
+          scheduleSummary: 'No saved schedule yet',
+        },
+      })
+    } catch (error) {
+      setAccountsMessage(`Schedule delete failed: ${error.message}`)
+    } finally {
+      setRunningSchedule(false)
+    }
+  }
+
   async function handleRun(triggerNodeId = defaultTriggerNodeId) {
     if (!validation.ok || !parsedWorkflow || !triggerNodeId) return
     setRunning(true)
@@ -1039,7 +1167,7 @@ function App() {
           {parsedWorkflow ? (
             <main className="workspace-main">
               {workspaceTab === 'canvas' ? <WorkspaceCanvasScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} onOpenNodeWorkspace={() => openNodeWorkspace()} onOpenRunWorkspace={() => goToWorkspaceTab('run')} zoom={zoom} pan={pan} onPanChange={setPan} onZoomChange={setZoom} runState={runState} /> : null}
-              {workspaceTab === 'node' ? <WorkspaceNodeScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedTool={selectedTool} selectedNodeId={selectedNodeId} onSelectNode={openNodeWorkspace} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} /> : null}
+              {workspaceTab === 'node' ? <WorkspaceNodeScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedTool={selectedTool} selectedNodeId={selectedNodeId} onSelectNode={openNodeWorkspace} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} onSaveSchedule={handleSaveSchedule} onRunScheduleNow={handleRunScheduleNow} onDeleteSchedule={handleDeleteSchedule} scheduleBusy={runningSchedule} /> : null}
               {workspaceTab === 'run' ? <div className="workspace-screen-stack"><div className="panel workspace-section-intro quiet-surface"><div className="section-title">Run</div></div><div className="panel"><RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} /><div className="event-panel"><div className="section-title">Events</div><EventTimeline events={runState?.events || []} /></div></div></div> : null}
               {workspaceTab === 'socrates' ? <WorkspaceSocratesScreen connection={connection} socratesMessages={socratesMessages} socratesDraft={socratesDraft} onSocratesDraftChange={setSocratesDraft} onSendToSocrates={handleSendToSocrates} sendingToSocrates={sendingToSocrates} /> : null}
               {workspaceTab === 'settings' ? <WorkspaceSettingsScreen connection={connection} bridgeUrlDraft={bridgeUrlDraft} onBridgeUrlDraftChange={setBridgeUrlDraft} onSaveBridgeTarget={saveBridgeTarget} onResetBridgeTarget={resetBridgeTarget} onRefreshConnection={refreshConnection} refreshingConnection={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} onConnectProvider={handleConnectProvider} onTestAccount={handleTestAccount} onOpenJson={() => setJsonPanelOpen(true)} /> : null}
@@ -1059,7 +1187,7 @@ function App() {
                 <button className="primary-button" onClick={() => openNodeWorkspace(selectedNode.id)}>Edit</button>
               </div>
             </div>
-            <NodeDetailPanel node={selectedNode} tool={selectedTool} workflow={parsedWorkflow} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} />
+            <NodeDetailPanel node={selectedNode} tool={selectedTool} workflow={parsedWorkflow} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} onSaveSchedule={handleSaveSchedule} onRunScheduleNow={handleRunScheduleNow} onDeleteSchedule={handleDeleteSchedule} scheduleBusy={runningSchedule} />
           </div>
         ) : null}
       </BottomSheet>

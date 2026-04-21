@@ -17,14 +17,17 @@ function getNodeById(workflow, nodeId) {
 }
 
 function shouldSkipNode(node, state, workflow) {
-  if (node.toolId !== 'integrations.google_drive.save_file') return false
-  if (node.config?.accountId) return false
+  if (node.toolId === 'integrations.google_drive.save_file') {
+    if (node.config?.accountId) return false
 
-  const incoming = getIncoming(workflow, node.id)
-  const previousNodeId = incoming[incoming.length - 1]?.from
-  const previousOutput = previousNodeId ? state.nodeOutputs[previousNodeId] : null
-  const hasContent = Boolean(previousOutput?.editedText ?? previousOutput?.storyText ?? previousOutput?.content)
-  return hasContent
+    const incoming = getIncoming(workflow, node.id)
+    const previousNodeId = incoming[incoming.length - 1]?.from
+    const previousOutput = previousNodeId ? state.nodeOutputs[previousNodeId] : null
+    const hasContent = Boolean(previousOutput?.editedText ?? previousOutput?.storyText ?? previousOutput?.content)
+    return hasContent
+  }
+
+  return false
 }
 
 function getUsableParentOutput(state, workflow, nodeId) {
@@ -71,6 +74,14 @@ function buildFileName(template, title) {
 function toDownloadUrl({ content, contentType }) {
   const blob = new Blob([content], { type: contentType || 'text/plain' })
   return URL.createObjectURL(blob)
+}
+
+function formatScheduleSummary(config = {}) {
+  if (config.scheduleSummary) return config.scheduleSummary
+  if (config.scheduleMode === 'once' && config.runAt) return `Once at ${config.runAt}`
+  if (config.scheduleMode === 'every' && config.everyMinutes) return `Every ${config.everyMinutes} minutes`
+  if (config.scheduleMode === 'cron' && config.cronExpression) return `Cron: ${config.cronExpression}`
+  return 'Scheduled trigger'
 }
 
 async function executeStructuredPrompt(node, context) {
@@ -242,7 +253,24 @@ async function executeNode(node, context) {
   await delay(250)
 
   switch (node.type) {
-    case 'trigger':
+    case 'trigger': {
+      if (node.toolId === 'trigger.schedule') {
+        return {
+          message: 'Schedule trigger started the workflow',
+          output: {
+            started: true,
+            triggeredAt: getTimestamp(),
+            triggerMode: node.config?.triggerMode ?? 'schedule',
+            scheduleMode: node.config?.scheduleMode ?? 'cron',
+            timezone: node.config?.timezone ?? 'UTC',
+            enabled: node.config?.enabled ?? true,
+            scheduleSummary: formatScheduleSummary(node.config),
+            cronJobId: node.config?.cronJobId ?? null,
+            triggerLabel: node.config?.triggerLabel ?? 'Scheduled workflow',
+          },
+        }
+      }
+
       return {
         message: 'Manual trigger started the workflow',
         output: {
@@ -253,6 +281,7 @@ async function executeNode(node, context) {
           triggerLabel: node.config?.triggerLabel ?? 'Start workflow',
         },
       }
+    }
     case 'tool': {
       if (node.toolId === 'ai.structured_prompt') {
         return executeStructuredPrompt(node, context)
@@ -260,6 +289,20 @@ async function executeNode(node, context) {
 
       if (node.toolId === 'ai.prompt' || node.toolId === 'ai.prompt.edit') {
         return executePrompt(node, context)
+      }
+
+      if (node.toolId === 'ai.brief_synthesis') {
+        const priorities = context.lastOutput ?? {}
+        return {
+          message: 'Brief synthesis produced a mission briefing summary',
+          output: {
+            briefing: priorities.briefing || 'Mission briefing placeholder: schedule trigger fired and downstream synthesis is ready for real source inputs.',
+            recommendedNextAction: priorities.recommendedNextAction || 'Implement real source nodes and prioritization inputs next.',
+            live: false,
+            fallback: true,
+            nodeKind: 'brief_synthesis',
+          },
+        }
       }
 
       return {
@@ -278,6 +321,18 @@ async function executeNode(node, context) {
 
       if (node.toolId === 'outputs.download_file') {
         return executeDownloadFile(node, context)
+      }
+
+      if (node.toolId === 'outputs.send_message') {
+        return {
+          message: 'Send briefing prepared a delivery result placeholder',
+          output: {
+            delivered: false,
+            destination: node.config?.destination || 'Unconfigured destination',
+            briefing: context.lastOutput?.briefing || '',
+            fallback: true,
+          },
+        }
       }
 
       return {
@@ -345,6 +400,7 @@ export async function runWorkflow(workflow, onEvent, options = {}) {
       try {
         const result = await executeNode(node, {
           state,
+          workflow,
           lastOutput,
           liveExecutors: options.liveExecutors,
         })

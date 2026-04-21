@@ -33,6 +33,6 @@ describe('workflowLibrary', () => {
     expect(searchView.items).toHaveLength(1)
     expect(searchView.items[0].id).toBe('alpha-workflow')
     expect(openedView.items[0].id).toBe('alpha-workflow')
-    expect(openedView.stats.totalWorkflows).toBe(2)
+    expect(openedView.stats.totalWorkflows).toBe(base.length + 1)
   })
 })
