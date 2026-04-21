@@ -185,7 +185,7 @@ button {
 
 .diagram-surface {
   position: relative;
-  overflow: auto;
+  overflow: hidden;
   max-width: 100%;
   min-height: 240px;
   border-radius: 18px;
@@ -195,10 +195,26 @@ button {
     rgba(9, 14, 28, 0.94);
   background-size: 24px 24px, 24px 24px, auto;
   border: 1px solid rgba(130, 152, 201, 0.18);
+  touch-action: none;
 }
 
 .graph-stage-surface {
   min-height: 520px;
+  height: min(72vh, 820px);
+}
+
+.diagram-world {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.pannable {
+  cursor: grab;
+}
+
+.pannable:active {
+  cursor: grabbing;
 }
 
 .diagram-svg {
@@ -231,6 +247,7 @@ button {
   padding: 12px;
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  z-index: 2;
 }
 
 .diagram-node:hover {
@@ -336,6 +353,36 @@ button {
   gap: 12px;
 }
 
+.node-popover {
+  position: absolute;
+  z-index: 4;
+  animation: nodePopoverIn 180ms ease;
+}
+
+.node-popover::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 28px;
+  width: 18px;
+  height: 18px;
+  background: rgba(13, 19, 37, 0.96);
+  border-left: 1px solid rgba(136, 156, 199, 0.2);
+  border-top: 1px solid rgba(136, 156, 199, 0.2);
+  transform: rotate(45deg);
+}
+
+@keyframes nodePopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .node-detail-grid {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   margin-bottom: 12px;
@@ -356,6 +403,15 @@ button {
   background: rgba(19, 28, 50, 0.92);
   border-radius: 12px;
   border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.node-popover-panel {
+  background: rgba(13, 19, 37, 0.96);
+  border: 1px solid rgba(136, 156, 199, 0.2);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(10px);
 }
 
 .node-info-card,
@@ -689,6 +745,11 @@ select {
 
   .graph-stage-surface {
     min-height: 420px;
+    height: 62vh;
+  }
+
+  .node-popover {
+    width: min(88vw, 360px) !important;
   }
 
   .chat-drawer-panel {

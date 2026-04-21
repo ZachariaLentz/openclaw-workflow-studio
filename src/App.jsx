@@ -91,6 +91,8 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
 
   function handleWheel(event) {
     event.preventDefault()
+    event.stopPropagation()
+
     const surface = surfaceRef.current
     if (!surface) return
 
@@ -112,6 +114,19 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
     onPanChange(nextPan)
   }
 
+  useEffect(() => {
+    const surface = surfaceRef.current
+    if (!surface) return undefined
+
+    const listener = (event) => {
+      event.preventDefault()
+      handleWheel(event)
+    }
+
+    surface.addEventListener('wheel', listener, { passive: false })
+    return () => surface.removeEventListener('wheel', listener)
+  }, [zoom, pan, onPanChange, onZoomChange])
+
   return (
     <div className="graph-stage-wrap">
       <div className="diagram-explainer graph-stage-topline">
@@ -126,7 +141,6 @@ function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanCha
         onPointerMove={movePan}
         onPointerUp={endPan}
         onPointerLeave={endPan}
-        onWheel={handleWheel}
       >
         <div
           className="diagram-world"
@@ -860,13 +874,13 @@ function App() {
   const nodePopover = useMemo(() => {
     if (!parsedWorkflow || !selectedNode) return null
     const position = getNodePosition(selectedNode)
-    const left = position.left + NODE_WIDTH + 18
-    const top = Math.max(12, position.top - 12)
+    const left = position.left + NODE_WIDTH - 24
+    const top = position.top + NODE_HEIGHT + 16
 
     return {
       left,
       top,
-      width: 420,
+      width: 360,
       content: (
         <NodeDetailPanel
           node={selectedNode}
