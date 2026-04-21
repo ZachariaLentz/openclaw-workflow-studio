@@ -47,4 +47,22 @@ describe('workflowLibrary', () => {
     expect(reloaded).toHaveLength(sampleWorkflows.length)
     expect(reloaded.some((workflow) => workflow.id === 'scheduled-mission-briefing')).toBe(true)
   })
+
+  it('refreshes a persisted sample workflow when the fallback sample grows', () => {
+    const fallback = loadWorkflowLibrary()
+    const scheduled = fallback.find((workflow) => workflow.id === 'scheduled-mission-briefing')
+    const staleScheduled = {
+      ...scheduled,
+      nodes: scheduled.nodes.slice(0, 5),
+      edges: scheduled.edges.slice(0, 4),
+    }
+
+    window.localStorage.setItem(WORKFLOW_LIBRARY_STORAGE_KEY, JSON.stringify([staleScheduled]))
+
+    const reloaded = loadWorkflowLibrary()
+    const refreshed = reloaded.find((workflow) => workflow.id === 'scheduled-mission-briefing')
+
+    expect(refreshed.nodes.length).toBe(sampleWorkflows.find((workflow) => workflow.id === 'scheduled-mission-briefing').nodes.length)
+    expect(refreshed.edges.length).toBe(sampleWorkflows.find((workflow) => workflow.id === 'scheduled-mission-briefing').edges.length)
+  })
 })

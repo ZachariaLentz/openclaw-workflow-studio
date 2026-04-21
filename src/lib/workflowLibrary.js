@@ -54,10 +54,42 @@ function getFallbackWorkflows() {
 
 function mergeMissingSampleWorkflows(workflows) {
   const fallback = getFallbackWorkflows()
-  const existingIds = new Set(workflows.map((workflow) => workflow.id))
+  const fallbackById = new Map(fallback.map((workflow) => [workflow.id, workflow]))
+  let changed = false
+
+  const merged = workflows.map((workflow) => {
+    const sample = fallbackById.get(workflow.id)
+    if (!sample) return workflow
+
+    const currentNodeCount = workflow.nodes?.length || 0
+    const sampleNodeCount = sample.nodes?.length || 0
+    const currentEdgeCount = workflow.edges?.length || 0
+    const sampleEdgeCount = sample.edges?.length || 0
+
+    const shouldRefreshFromSample = sampleNodeCount > currentNodeCount || sampleEdgeCount > currentEdgeCount
+    if (!shouldRefreshFromSample) return workflow
+
+    changed = true
+    return normalizeWorkflow({
+      ...sample,
+      metadata: {
+        ...sample.metadata,
+        library: {
+          ...sample.metadata?.library,
+          createdAt: workflow.metadata?.library?.createdAt || sample.metadata?.library?.createdAt,
+          updatedAt: sample.metadata?.library?.updatedAt || workflow.metadata?.library?.updatedAt,
+          lastOpenedAt: workflow.metadata?.library?.lastOpenedAt || sample.metadata?.library?.lastOpenedAt || null,
+        },
+      },
+    })
+  })
+
+  const existingIds = new Set(merged.map((workflow) => workflow.id))
   const missing = fallback.filter((workflow) => !existingIds.has(workflow.id))
-  if (missing.length === 0) return workflows
-  return saveWorkflowLibrary([...workflows, ...missing])
+  if (missing.length > 0) changed = true
+
+  if (!changed && missing.length === 0) return workflows
+  return saveWorkflowLibrary([...merged, ...missing])
 }
 
 export function saveWorkflowLibrary(workflows) {

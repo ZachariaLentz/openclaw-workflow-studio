@@ -249,6 +249,15 @@ async function executeDownloadFile(node, context) {
   }
 }
 
+function collectIncomingOutputs(state, workflow, nodeId) {
+  const incoming = getIncoming(workflow, nodeId)
+  return incoming.map((edge) => ({
+    from: edge.from,
+    output: state.nodeOutputs[edge.from],
+    status: state.nodeStatus[edge.from],
+  }))
+}
+
 async function executeNode(node, context) {
   await delay(250)
 
@@ -282,6 +291,71 @@ async function executeNode(node, context) {
         },
       }
     }
+    case 'input': {
+      if (node.toolId === 'sources.calendar_fetch') {
+        return {
+          message: 'Calendar fetch placeholder produced a sample upcoming-events payload',
+          output: {
+            source: 'calendar',
+            enabled: node.config?.enabled !== false,
+            windowHours: node.config?.lookaheadHours ?? 24,
+            events: [
+              {
+                title: 'Sample calendar event',
+                startsAt: getTimestamp(),
+                placeholder: true,
+              },
+            ],
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      if (node.toolId === 'sources.weather_fetch') {
+        return {
+          message: 'Weather fetch placeholder produced a sample forecast payload',
+          output: {
+            source: 'weather',
+            enabled: node.config?.enabled !== false,
+            forecast: {
+              summary: 'Placeholder forecast: mild weather with no severe alerts.',
+              placeholder: true,
+            },
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      if (node.toolId === 'sources.system_status') {
+        return {
+          message: 'System status placeholder produced a sample operational-status payload',
+          output: {
+            source: 'system-status',
+            enabled: node.config?.enabled !== false,
+            statusItems: [
+              {
+                label: 'Workflow Studio runtime status placeholder',
+                severity: 'info',
+                placeholder: true,
+              },
+            ],
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      return {
+        message: `Input placeholder completed: ${node.toolId ?? 'unknown-input'}`,
+        output: {
+          toolId: node.toolId,
+          status: 'ok',
+          placeholder: true,
+        },
+      }
+    }
     case 'tool': {
       if (node.toolId === 'ai.structured_prompt') {
         return executeStructuredPrompt(node, context)
@@ -305,12 +379,120 @@ async function executeNode(node, context) {
         }
       }
 
+      if (node.toolId === 'config.load_briefing') {
+        const trigger = context.lastOutput ?? {}
+        const configuredSources = Array.isArray(node.config?.sources) ? node.config.sources : []
+        const sourceFlags = {
+          calendar: configuredSources.includes('calendar'),
+          weather: configuredSources.includes('weather'),
+          systemStatus: configuredSources.includes('system-status'),
+        }
+
+        return {
+          message: 'Briefing config loaded workflow-level settings and trigger context',
+          output: {
+            briefingConfig: {
+              sourceFlags,
+              sources: configuredSources,
+              deliveryTarget: node.config?.deliveryTarget || 'telegram-dm',
+              quietHours: node.config?.quietHours || null,
+              briefingStyle: node.config?.briefingStyle || 'concise-operational',
+              urgencyThreshold: node.config?.urgencyThreshold || 'high',
+              triggerContext: {
+                triggerMode: trigger.triggerMode || 'schedule',
+                scheduleMode: trigger.scheduleMode || null,
+                triggeredAt: trigger.triggeredAt || getTimestamp(),
+                timezone: trigger.timezone || 'UTC',
+                scheduleSummary: trigger.scheduleSummary || formatScheduleSummary(node.config),
+                triggerLabel: trigger.triggerLabel || 'Scheduled workflow',
+              },
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
       return {
-        message: `Tool simulated: ${node.toolId ?? 'unknown-tool'}`,
+        message: `Tool placeholder completed: ${node.toolId ?? 'unknown-tool'}`,
         output: {
           toolId: node.toolId,
           status: 'ok',
           result: node.config?.mockResult ?? `${node.label} finished`,
+          placeholder: true,
+        },
+      }
+    }
+    case 'transform': {
+      if (node.toolId === 'data.merge_inputs') {
+        const sources = collectIncomingOutputs(context.state, context.workflow, node.id)
+        return {
+          message: 'Merge Inputs placeholder combined upstream source payloads',
+          output: {
+            merged: {
+              sources: sources.map((item) => ({ from: item.from, output: item.output })),
+              placeholder: true,
+            },
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      return {
+        message: `Transform placeholder completed: ${node.toolId ?? 'unknown-transform'}`,
+        output: {
+          toolId: node.toolId,
+          status: 'ok',
+          placeholder: true,
+        },
+      }
+    }
+    case 'branch': {
+      if (node.toolId === 'logic.prioritize') {
+        const merged = context.lastOutput?.merged || {}
+        return {
+          message: 'Prioritize / Classify placeholder produced sample buckets',
+          output: {
+            priorities: {
+              urgent: [],
+              today: [
+                {
+                  label: 'Sample prioritized item',
+                  placeholder: true,
+                },
+              ],
+              informational: merged.sources || [],
+              ignore: [],
+            },
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.urgency_branch') {
+        const priorities = context.lastOutput?.briefing ? context.lastOutput : (context.lastOutput?.priorities || context.lastOutput || {})
+        const urgentItems = Array.isArray(priorities?.urgent) ? priorities.urgent : []
+        return {
+          message: 'Urgency Branch placeholder evaluated the current briefing urgency route',
+          output: {
+            urgent: urgentItems.length > 0,
+            route: urgentItems.length > 0 ? 'urgent' : 'normal',
+            live: false,
+            placeholder: true,
+            briefing: context.lastOutput?.briefing,
+            recommendedNextAction: context.lastOutput?.recommendedNextAction,
+          },
+        }
+      }
+
+      return {
+        message: `Branch placeholder completed: ${node.toolId ?? 'unknown-branch'}`,
+        output: {
+          toolId: node.toolId,
+          status: 'ok',
+          placeholder: true,
         },
       }
     }
@@ -335,10 +517,44 @@ async function executeNode(node, context) {
         }
       }
 
+      if (node.toolId === 'storage.persist_run_record') {
+        return {
+          message: 'Persist Run Record placeholder produced a sample run record',
+          output: {
+            stored: false,
+            runRecord: {
+              runId: `run-${Date.now()}`,
+              stored: false,
+              placeholder: true,
+              briefing: context.lastOutput?.briefing || '',
+              destination: context.lastOutput?.destination || null,
+            },
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
+      if (node.toolId === 'outputs.return_result') {
+        return {
+          message: 'Return Result placeholder prepared an in-app result summary',
+          output: {
+            resultSummary: {
+              status: 'ready',
+              placeholder: true,
+              runRecord: context.lastOutput?.runRecord || context.lastOutput || {},
+            },
+            live: false,
+            placeholder: true,
+          },
+        }
+      }
+
       return {
         message: 'Output node completed',
         output: {
           result: context.lastOutput ?? {},
+          placeholder: true,
         },
       }
     }
