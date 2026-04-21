@@ -535,8 +535,6 @@ function AccountsPanel({ providers, accounts, onRefresh, onConnect, onTest, refr
                   Open Google sign-in
                 </a>
               ) : null}
-                </div>
-              ) : null}
 
               {providerAccounts.length === 0 ? <div className="muted empty-state">No account connected.</div> : null}
               <div className="account-list">
