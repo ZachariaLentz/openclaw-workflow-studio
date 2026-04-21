@@ -572,6 +572,9 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
 }
 
 function RunPanel({ runState, running, onRun, defaultTriggerNodeId, open, onToggle }) {
+  const downloadOutput = runState?.nodeOutputs?.['download-file']
+  const storyOutput = runState?.nodeOutputs?.['prompt-edit-story'] || runState?.nodeOutputs?.['prompt-write-story']
+
   return (
     <div className={`run-activity-shell ${open ? 'open' : ''}`}>
       <div className="panel run-activity-panel">
@@ -585,6 +588,26 @@ function RunPanel({ runState, running, onRun, defaultTriggerNodeId, open, onTogg
           </div>
         </div>
         <div className="muted">Run activity stays tucked away until needed, then rolls down when the workflow is active.</div>
+
+        {downloadOutput?.downloadUrl ? (
+          <div className="run-result-card success-surface">
+            <div>
+              <strong>Your story is ready</strong>
+              <div className="muted small-copy">{downloadOutput.fileName}</div>
+            </div>
+            <a className="primary-button inline-button" href={downloadOutput.downloadUrl} download={downloadOutput.fileName}>
+              Download story
+            </a>
+          </div>
+        ) : null}
+
+        {storyOutput?.editedText || storyOutput?.storyText ? (
+          <div className="story-preview">
+            <div className="section-title">Story Preview</div>
+            <pre>{storyOutput.editedText || storyOutput.storyText}</pre>
+          </div>
+        ) : null}
+
         <div className="run-status-grid">
           {runState
             ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (

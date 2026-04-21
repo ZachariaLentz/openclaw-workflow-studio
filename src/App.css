@@ -399,7 +399,8 @@ button {
 .status-item,
 .account-item,
 .chat-bubble,
-.node-action-card {
+.node-action-card,
+.run-result-card {
   background: rgba(19, 28, 50, 0.92);
   border-radius: 12px;
   border: 1px solid rgba(123, 145, 194, 0.16);
@@ -420,7 +421,8 @@ button {
 .account-banner,
 .empty-state,
 .chat-bubble,
-.node-action-card {
+.node-action-card,
+.run-result-card {
   padding: 12px;
 }
 
@@ -442,6 +444,36 @@ button {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.run-result-card {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.success-surface {
+  border-color: rgba(134, 239, 172, 0.3);
+  background: linear-gradient(180deg, rgba(33, 65, 49, 0.92), rgba(19, 28, 50, 0.92));
+}
+
+.story-preview {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(19, 28, 50, 0.92);
+  border: 1px solid rgba(123, 145, 194, 0.16);
+}
+
+.story-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #dfe9ff;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
 .edge-list,
