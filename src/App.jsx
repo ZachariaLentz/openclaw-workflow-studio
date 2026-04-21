@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
@@ -17,6 +17,8 @@ const GRID_X = 220
 const GRID_Y = 132
 const PADDING_X = 40
 const PADDING_Y = 40
+const MIN_ZOOM = 0.55
+const MAX_ZOOM = 1.75
 
 function getNodePosition(node) {
   return {
@@ -50,60 +52,152 @@ function getEdgePath(fromNode, toNode) {
   return `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
 }
 
-function GraphView({ workflow, selectedNodeId, onSelectNode }) {
+function clampZoom(value) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+}
+
+function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanChange, onZoomChange, nodePopover }) {
   const size = getCanvasSize(workflow)
   const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node]))
+  const surfaceRef = useRef(null)
+  const dragRef = useRef(null)
+
+  function beginPan(event) {
+    if (event.target.closest('.diagram-node')) return
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  function movePan(event) {
+    if (!dragRef.current) return
+    const deltaX = event.clientX - dragRef.current.x
+    const deltaY = event.clientY - dragRef.current.y
+    onPanChange({
+      x: dragRef.current.panX + deltaX,
+      y: dragRef.current.panY + deltaY,
+    })
+  }
+
+  function endPan(event) {
+    if (!dragRef.current) return
+    dragRef.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
+
+  function handleWheel(event) {
+    event.preventDefault()
+    const surface = surfaceRef.current
+    if (!surface) return
+
+    const rect = surface.getBoundingClientRect()
+    const pointerX = event.clientX - rect.left
+    const pointerY = event.clientY - rect.top
+    const zoomFactor = event.deltaY < 0 ? 1.08 : 0.92
+    const nextZoom = clampZoom(zoom * zoomFactor)
+    if (nextZoom === zoom) return
+
+    const worldX = (pointerX - pan.x) / zoom
+    const worldY = (pointerY - pan.y) / zoom
+    const nextPan = {
+      x: pointerX - worldX * nextZoom,
+      y: pointerY - worldY * nextZoom,
+    }
+
+    onZoomChange(nextZoom)
+    onPanChange(nextPan)
+  }
 
   return (
     <div className="graph-stage-wrap">
       <div className="diagram-explainer graph-stage-topline">
-        <span className="pill">left → right</span>
-        <span className="muted">Click any node to inspect inputs, outputs, routes, requirements, and configuration.</span>
+        <span className="pill">drag to pan</span>
+        <span className="pill">scroll to zoom</span>
+        <span className="muted">Click a node to open its details right on the graph.</span>
       </div>
-      <div className="diagram-surface graph-stage-surface" style={{ width: size.width, height: size.height }}>
-        <svg className="diagram-svg" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
-          <defs>
-            <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-              <path d="M 0 0 L 12 6 L 0 12 z" fill="#7ea3ff" />
-            </marker>
-          </defs>
-          {workflow.edges.map((edge) => {
-            const fromNode = nodeMap.get(edge.from)
-            const toNode = nodeMap.get(edge.to)
-            if (!fromNode || !toNode) return null
+      <div
+        ref={surfaceRef}
+        className="diagram-surface graph-stage-surface pannable"
+        onPointerDown={beginPan}
+        onPointerMove={movePan}
+        onPointerUp={endPan}
+        onPointerLeave={endPan}
+        onWheel={handleWheel}
+      >
+        <div
+          className="diagram-world"
+          style={{
+            width: size.width,
+            height: size.height,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: '0 0',
+          }}
+        >
+          <svg className="diagram-svg" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`}>
+            <defs>
+              <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+                <path d="M 0 0 L 12 6 L 0 12 z" fill="#7ea3ff" />
+              </marker>
+            </defs>
+            {workflow.edges.map((edge) => {
+              const fromNode = nodeMap.get(edge.from)
+              const toNode = nodeMap.get(edge.to)
+              if (!fromNode || !toNode) return null
 
+              return (
+                <g key={edge.id}>
+                  <path d={getEdgePath(fromNode, toNode)} className="diagram-edge" markerEnd="url(#arrowhead)" />
+                  {edge.condition ? (
+                    <text
+                      x={(getNodePosition(fromNode).left + NODE_WIDTH + getNodePosition(toNode).left) / 2}
+                      y={(getNodePosition(fromNode).top + getNodePosition(toNode).top) / 2 + 8}
+                      className="diagram-edge-label"
+                    >
+                      {edge.condition}
+                    </text>
+                  ) : null}
+                </g>
+              )
+            })}
+          </svg>
+
+          {workflow.nodes.map((node) => {
+            const position = getNodePosition(node)
+            const isSelected = selectedNodeId === node.id
             return (
-              <g key={edge.id}>
-                <path d={getEdgePath(fromNode, toNode)} className="diagram-edge" markerEnd="url(#arrowhead)" />
-                {edge.condition ? (
-                  <text
-                    x={(getNodePosition(fromNode).left + NODE_WIDTH + getNodePosition(toNode).left) / 2}
-                    y={(getNodePosition(fromNode).top + getNodePosition(toNode).top) / 2 + 8}
-                    className="diagram-edge-label"
-                  >
-                    {edge.condition}
-                  </text>
-                ) : null}
-              </g>
+              <button
+                key={node.id}
+                className={`diagram-node ${isSelected ? 'selected' : ''} ${node.type}`}
+                style={{ left: position.left, top: position.top, width: NODE_WIDTH, height: NODE_HEIGHT }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelectNode(node.id)
+                }}
+              >
+                <div className="node-type">{node.type}</div>
+                <div className="node-label">{node.label}</div>
+                <div className="node-id">{node.id}</div>
+              </button>
             )
           })}
-        </svg>
 
-        {workflow.nodes.map((node) => {
-          const position = getNodePosition(node)
-          return (
-            <button
-              key={node.id}
-              className={`diagram-node ${selectedNodeId === node.id ? 'selected' : ''} ${node.type}`}
-              style={{ left: position.left, top: position.top, width: NODE_WIDTH, height: NODE_HEIGHT }}
-              onClick={() => onSelectNode(node.id)}
+          {nodePopover ? (
+            <div
+              className="node-popover"
+              style={{
+                left: nodePopover.left,
+                top: nodePopover.top,
+                width: nodePopover.width,
+              }}
             >
-              <div className="node-type">{node.type}</div>
-              <div className="node-label">{node.label}</div>
-              <div className="node-id">{node.id}</div>
-            </button>
-          )
-        })}
+              {nodePopover.content}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -303,15 +397,8 @@ function SchemaBlock({ title, value, defaultOpen = false }) {
   )
 }
 
-function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider }) {
-  if (!node) {
-    return (
-      <div className="panel-section grow node-detail-panel empty">
-        <div className="section-title">Node Details</div>
-        <div className="muted">Click a node in the graph to bring its details into focus.</div>
-      </div>
-    )
-  }
+function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatchNode, accounts, onConnectProvider, onClose }) {
+  if (!node) return null
 
   const incoming = workflow.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from)
   const outgoing = workflow.edges.filter((edge) => edge.from === node.id).map((edge) => edge.to)
@@ -332,7 +419,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
       : ['Output not produced yet']
 
   return (
-    <div className="panel-section grow node-detail-panel node-detail-animated">
+    <div className="panel-section grow node-detail-panel node-popover-panel">
       <div className="node-detail-header">
         <div>
           <div className="section-title">{node.label}</div>
@@ -341,6 +428,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         <div className="node-detail-meta">
           <span className="pill">{node.type}</span>
           <span className="pill">{latestStatus}</span>
+          <button className="secondary-button popover-close-button" onClick={onClose}>Close</button>
         </div>
       </div>
 
@@ -348,7 +436,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
         <div className="node-action-card">
           <div>
             <strong>Run from this node</strong>
-            <div className="muted small-copy">Use the trigger directly from the selected node detail panel.</div>
+            <div className="muted small-copy">Use the trigger directly from the node popover.</div>
           </div>
           <button className="primary-button" onClick={() => onRunTrigger(node.id)}>{node.config?.triggerLabel ?? 'Start workflow'}</button>
         </div>
@@ -469,33 +557,38 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
   )
 }
 
-function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
+function RunPanel({ runState, running, onRun, defaultTriggerNodeId, open, onToggle }) {
   return (
-    <div className="panel-section grow">
-      <div className="section-title row-between">
-        <span>Run Activity</span>
-        <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>
-          {running ? 'Running…' : 'Run workflow'}
-        </button>
-      </div>
-      <div className="muted">Run the flow and watch each step complete.</div>
-      <div className="run-status-grid">
-        {runState
-          ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (
-              <div key={nodeId} className={`status-item status-${status}`}>
-                <span>{nodeId}</span>
-                <strong>{status}</strong>
-              </div>
-            ))
-          : <div className="muted">No run yet.</div>}
-      </div>
-      <div className="event-log">
-        {runState?.events?.map((event, index) => (
-          <div key={`${event.type}-${index}`} className="event-item">
-            <strong>{event.type}</strong>
-            <span>{event.label || event.nodeId || event.message || event.because}</span>
+    <div className={`run-activity-shell ${open ? 'open' : ''}`}>
+      <div className="panel run-activity-panel">
+        <div className="section-title row-between">
+          <span>Run Activity</span>
+          <div className="run-activity-actions">
+            <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>
+              {running ? 'Running…' : 'Run workflow'}
+            </button>
+            <button className="secondary-button" onClick={onToggle}>{open ? 'Collapse' : 'Expand'}</button>
           </div>
-        ))}
+        </div>
+        <div className="muted">Run activity stays tucked away until needed, then rolls down when the workflow is active.</div>
+        <div className="run-status-grid">
+          {runState
+            ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => (
+                <div key={nodeId} className={`status-item status-${status}`}>
+                  <span>{nodeId}</span>
+                  <strong>{status}</strong>
+                </div>
+              ))
+            : <div className="muted">No run yet.</div>}
+        </div>
+        <div className="event-log">
+          {runState?.events?.map((event, index) => (
+            <div key={`${event.type}-${index}`} className="event-item">
+              <strong>{event.type}</strong>
+              <span>{event.label || event.nodeId || event.message || event.because}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -508,6 +601,7 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState('')
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
+  const [runPanelOpen, setRunPanelOpen] = useState(false)
   const [activeView, setActiveView] = useState('workflows')
   const [connection, setConnection] = useState({ connected: false, bridgeUrl: 'http://127.0.0.1:4318', providers: [], accounts: [] })
   const [refreshingConnection, setRefreshingConnection] = useState(false)
@@ -519,6 +613,8 @@ function App() {
   const [oauthStatus, setOauthStatus] = useState(null)
   const [accountsMessage, setAccountsMessage] = useState('')
   const [bridgeUrlDraft, setBridgeUrlDraft] = useState(getSavedBridgeUrl())
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 40, y: 24 })
 
   const parsedResult = useMemo(() => {
     try {
@@ -600,8 +696,11 @@ function App() {
     setWorkflowText(JSON.stringify(workflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
+    setRunPanelOpen(false)
     setSocratesMessages([])
     setJsonPanelOpen(false)
+    setZoom(1)
+    setPan({ x: 40, y: 24 })
   }
 
   function handleNewWorkflow() {
@@ -612,6 +711,7 @@ function App() {
     setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
+    setRunPanelOpen(false)
     setSocratesMessages([
       {
         role: 'assistant',
@@ -620,10 +720,12 @@ function App() {
     ])
     setSocratesOpen(true)
     setJsonPanelOpen(false)
+    setZoom(1)
+    setPan({ x: 40, y: 24 })
   }
 
   function handleSelectNode(nodeId) {
-    setSelectedNodeId(nodeId)
+    setSelectedNodeId((current) => (current === nodeId ? '' : nodeId))
   }
 
   function patchSelectedNode(patch) {
@@ -649,8 +751,12 @@ function App() {
     if (!validation.ok || !parsedWorkflow || !triggerNodeId) return
     setRunning(true)
     setRunState(null)
+    setRunPanelOpen(true)
     try {
-      await runWorkflow(parsedWorkflow, (nextState) => setRunState(nextState), {
+      await runWorkflow(parsedWorkflow, (nextState) => {
+        setRunState(nextState)
+        setRunPanelOpen(true)
+      }, {
         triggerNodeId,
         liveExecutors: connection.connected
           ? {
@@ -751,6 +857,32 @@ function App() {
     await refreshConnection()
   }
 
+  const nodePopover = useMemo(() => {
+    if (!parsedWorkflow || !selectedNode) return null
+    const position = getNodePosition(selectedNode)
+    const left = position.left + NODE_WIDTH + 18
+    const top = Math.max(12, position.top - 12)
+
+    return {
+      left,
+      top,
+      width: 420,
+      content: (
+        <NodeDetailPanel
+          node={selectedNode}
+          tool={selectedTool}
+          workflow={parsedWorkflow}
+          runState={runState}
+          onRunTrigger={handleRun}
+          onPatchNode={patchSelectedNode}
+          accounts={connection.accounts || []}
+          onConnectProvider={handleConnectProvider}
+          onClose={() => setSelectedNodeId('')}
+        />
+      ),
+    }
+  }, [parsedWorkflow, selectedNode, selectedTool, runState, connection.accounts])
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -818,32 +950,37 @@ function App() {
                     <button className="secondary-button" onClick={() => setJsonPanelOpen((current) => !current)}>
                       {jsonPanelOpen ? 'Hide Workflow JSON' : 'Reveal Workflow JSON'}
                     </button>
+                    <button className="secondary-button" onClick={() => { setZoom(1); setPan({ x: 40, y: 24 }) }}>Reset view</button>
                   </div>
                   <div className="workflow-stage-toolbar-right muted small-copy">
-                    {selectedNode ? `Selected: ${selectedNode.label}` : 'Select a node to inspect details'}
+                    {selectedNode ? `Node open: ${selectedNode.label}` : `Zoom ${Math.round(zoom * 100)}% · click a node for details`}
                   </div>
                 </div>
 
-                {parsedWorkflow ? <GraphView workflow={parsedWorkflow} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} /> : null}
+                {parsedWorkflow ? (
+                  <GraphView
+                    workflow={parsedWorkflow}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={handleSelectNode}
+                    zoom={zoom}
+                    pan={pan}
+                    onPanChange={setPan}
+                    onZoomChange={setZoom}
+                    nodePopover={nodePopover}
+                  />
+                ) : null}
               </div>
 
-              <div className={`panel node-detail-shell ${selectedNode ? 'visible' : ''}`}>
-                <NodeDetailPanel
-                  node={selectedNode}
-                  tool={selectedTool}
-                  workflow={parsedWorkflow}
-                  runState={runState}
-                  onRunTrigger={handleRun}
-                  onPatchNode={patchSelectedNode}
-                  accounts={connection.accounts || []}
-                  onConnectProvider={handleConnectProvider}
-                />
-              </div>
+              <RunPanel
+                runState={runState}
+                running={running}
+                onRun={handleRun}
+                defaultTriggerNodeId={defaultTriggerNodeId}
+                open={runPanelOpen}
+                onToggle={() => setRunPanelOpen((current) => !current)}
+              />
 
               <div className="workflow-bottom-grid">
-                <div className="panel">
-                  <RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} />
-                </div>
                 <div className="panel secondary-info-panel">
                   <ConnectionPanel
                     connection={connection}
