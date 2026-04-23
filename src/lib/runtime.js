@@ -1,3 +1,4 @@
+import { getNodeExecutor } from './nodes/registry'
 import { depsSatisfied, getUsableParentOutput, shouldSkipNode } from './runtime/core'
 import { executeNode } from './runtime/executors'
 import { delay } from './runtime/helpers'
@@ -54,7 +55,8 @@ export async function runWorkflow(workflow, onEvent, options = {}) {
 
       try {
         await delay(250)
-        const result = await executeNode(node, {
+        const executor = getNodeExecutor(node.toolId) || executeNode
+        const result = await executor(node, {
           state,
           workflow,
           lastOutput,

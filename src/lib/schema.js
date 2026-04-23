@@ -1,74 +1,5 @@
 import { z } from 'zod'
-
-const scheduleTriggerConfigSchema = z.object({
-  triggerMode: z.string().optional(),
-  scheduleMode: z.enum(['cron', 'every', 'once']),
-  cronExpression: z.string().optional(),
-  every: z.string().optional(),
-  everyMinutes: z.number().optional(),
-  runAt: z.string().optional(),
-  timezone: z.string().min(1),
-  enabled: z.boolean().optional(),
-  triggerLabel: z.string().optional(),
-  scheduleSummary: z.string().optional(),
-  cronJobId: z.string().nullable().optional(),
-  scheduleBindingId: z.string().nullable().optional(),
-}).superRefine((config, ctx) => {
-  if (config.scheduleMode === 'cron' && !config.cronExpression) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'cronExpression is required for cron schedule mode' })
-  }
-  if (config.scheduleMode === 'every' && !config.every && !config.everyMinutes) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'every or everyMinutes is required for every schedule mode' })
-  }
-  if (config.scheduleMode === 'once' && !config.runAt) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'runAt is required for once schedule mode' })
-  }
-})
-
-const promptConfigSchema = z.object({
-  runtimeTarget: z.string().min(1),
-  inputMapping: z.record(z.string(), z.any()).optional(),
-  outputMode: z.string().optional(),
-  expectedSchema: z.record(z.string(), z.any()).optional(),
-  audience: z.string().optional(),
-  theme: z.string().optional(),
-})
-
-const googleDriveSaveFileConfigSchema = z.object({
-  targetAccount: z.string().optional(),
-  accountId: z.string().optional(),
-  destination: z.string().min(1),
-  fileNameTemplate: z.string().min(1),
-  contentMapping: z.string().optional(),
-  contentType: z.string().min(1).optional(),
-})
-
-const downloadFileConfigSchema = z.object({
-  fileNameTemplate: z.string().min(1),
-  contentMapping: z.string().optional(),
-  contentType: z.string().min(1).optional(),
-})
-
-const sendMessageConfigSchema = z.object({
-  destinationType: z.string().optional(),
-  destination: z.string().min(1),
-})
-
-const returnResultConfigSchema = z.object({
-  visibleInApp: z.boolean().optional(),
-  displayMode: z.string().optional(),
-})
-
-const nodeConfigValidators = {
-  'trigger.schedule': scheduleTriggerConfigSchema,
-  'ai.prompt': promptConfigSchema,
-  'ai.prompt.edit': promptConfigSchema,
-  'ai.structured_prompt': promptConfigSchema,
-  'integrations.google_drive.save_file': googleDriveSaveFileConfigSchema,
-  'outputs.download_file': downloadFileConfigSchema,
-  'outputs.send_message': sendMessageConfigSchema,
-  'outputs.return_result': returnResultConfigSchema,
-}
+import { getNodeConfigSchema } from './nodes/registry'
 
 export const nodeTypeEnum = z.enum([
   'trigger',
@@ -157,7 +88,7 @@ export function validateWorkflow(definition) {
 
   for (const node of workflow.nodes) {
     if (!node.toolId) continue
-    const validator = nodeConfigValidators[node.toolId]
+    const validator = getNodeConfigSchema(node.toolId)
     if (!validator) continue
     const configResult = validator.safeParse(node.config || {})
     if (!configResult.success) {
