@@ -9,6 +9,8 @@ Socrates is not the default runtime actor for every workflow node.
 
 A separate runtime agent should execute OpenClaw-backed workflow nodes. In this phase that runtime agent is Daedalus.
 
+Pericles should usually act as the user/product owner and reviewer, not as the default hand-author of new workflows.
+
 ## Authoring contract
 Socrates should:
 - generate valid workflow JSON
@@ -20,6 +22,10 @@ Socrates should:
 - separate deterministic steps from agentic ones
 - make side-effecting steps explicit
 - ask clarifying questions when user intent is underspecified
+- reuse existing registry-backed nodes before proposing new primitives
+- configure or recombine existing nodes before inventing workflow-specific node behavior
+- explicitly identify missing reusable node primitives when existing nodes are insufficient
+- distinguish clearly between real, operator-fed, and scaffold node behavior
 
 ## Preferred authoring flow
 1. user describes desired app/workflow in natural language
@@ -47,3 +53,5 @@ Use retrieval over workflow corpus before pursuing opaque self-improvement.
 - app binding rules
 - example workflows
 - explicit role boundary between authoring (Socrates) and runtime execution (Daedalus)
+- the concise operating contract in `docs/socrates-operating-contract.md`
+- the concise node reference in `docs/node-catalog.md`
