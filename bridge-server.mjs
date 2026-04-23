@@ -824,6 +824,14 @@ const server = http.createServer(async (req, res) => {
         'Use the active workflow identity, saved-vs-draft status, trigger, and key nodes to disambiguate requests like "rename it", "add a step", or "fix this flow".',
         'When the active workflow is an existing saved workflow, preserve its purpose and ids unless the user explicitly requests a replacement.',
         'When the active workflow is a new draft, turn the request into a concrete workflow patch or replacement rather than generic advice.',
+        'CRITICAL PATCH RULES:',
+        '- Treat workflow.nodes, workflow.edges, and workflow.tools as arrays; do not use set/remove paths like nodes.some-id.field or edges.some-id.',
+        '- To change an existing node, return op=upsert_node with the FULL updated node object including its id, type, label, toolId, config, description, prompt, and position as needed.',
+        '- To change an existing edge, return op=upsert_edge with the FULL edge object.',
+        '- To change an existing tool, return op=upsert_tool with the FULL tool object.',
+        '- Use set/remove only for normal object paths outside the nodes/edges/tools arrays.',
+        '- Never address array members by id inside a dotted path.',
+        '- Prefer a small number of correct upsert_node/upsert_edge/upsert_tool operations over many fragile set operations.',
         'Active workflow context:',
         workflowContextText,
         'Current workflow JSON:',
@@ -832,23 +840,35 @@ const server = http.createServer(async (req, res) => {
         userMessage,
       ].join('\n\n')
 
-      const { stdout } = await execFileAsync(
-        'openclaw',
-        [
-          'agent',
-          '--agent',
-          'socrates',
-          '--message',
-          prompt,
-          '--timeout',
-          '30',
-        ],
-        {
-          cwd: process.cwd(),
-          timeout: 40000,
-          maxBuffer: 1024 * 1024,
-        },
-      )
+      const tempPromptPath = path.join(os.tmpdir(), `workflow-studio-socrates-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
+      await fs.writeFile(tempPromptPath, prompt, 'utf8')
+
+      let stdout = ''
+      try {
+        const result = await execFileAsync(
+          'python3',
+          [
+            '-c',
+            [
+              'import json, pathlib, subprocess, sys',
+              'prompt = pathlib.Path(sys.argv[1]).read_text()',
+              'result = subprocess.run(["openclaw", "agent", "--agent", "socrates", "--message", prompt, "--timeout", "30"], capture_output=True, text=True, timeout=40)',
+              'sys.stdout.write(result.stdout)',
+              'sys.stderr.write(result.stderr)',
+              'sys.exit(result.returncode)',
+            ].join('; '),
+            tempPromptPath,
+          ],
+          {
+            cwd: process.cwd(),
+            timeout: 45000,
+            maxBuffer: 1024 * 1024,
+          },
+        )
+        stdout = result.stdout
+      } finally {
+        await fs.unlink(tempPromptPath).catch(() => {})
+      }
 
       const raw = stdout?.trim() ?? ''
       const structured = parseSocratesStructuredOutput(raw)
