@@ -1,5 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { BottomSheet } from './components/BottomSheet'
+import { RunPanel } from './components/RunPanel'
+import { WorkflowLibraryScreen } from './components/WorkflowLibraryScreen'
+import { WorkspaceHeader } from './components/WorkspaceHeader'
+import { WorkspaceTabBar } from './components/WorkspaceTabBar'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
 import { loadLocalConnectionState } from './lib/liveWorkflow'
@@ -68,111 +73,6 @@ function clampZoom(value) {
 function resetCanvasState(setZoom, setPan) {
   setZoom(1)
   setPan({ x: 40, y: 24 })
-}
-
-function formatRelativeTime(value) {
-  if (!value) return 'Never'
-  const diff = new Date(value).getTime() - Date.now()
-  const minutes = Math.round(diff / 60000)
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute')
-  const hours = Math.round(minutes / 60)
-  if (Math.abs(hours) < 24) return formatter.format(hours, 'hour')
-  const days = Math.round(hours / 24)
-  return formatter.format(days, 'day')
-}
-
-function BottomSheet({ open, title, subtitle, onClose, children, tall = false }) {
-  return (
-    <div className={`sheet-shell ${open ? 'open' : ''}`} aria-hidden={!open}>
-      <div className="sheet-backdrop" onClick={onClose} />
-      <div className={`sheet-panel ${tall ? 'tall' : ''}`}>
-        <div className="sheet-handle" />
-        <div className="sheet-header row-between">
-          <div>
-            <div className="sheet-title">{title}</div>
-            {subtitle ? <div className="muted small-copy">{subtitle}</div> : null}
-          </div>
-          <button className="secondary-button" onClick={onClose}>Close</button>
-        </div>
-        <div className="sheet-body">{children}</div>
-      </div>
-    </div>
-  )
-}
-
-function WorkflowLibraryScreen({ libraryView, activeWorkflowId, onOpenWorkflow, onNewWorkflow, query, onQueryChange, sort, onSortChange }) {
-  return (
-    <div className="workflow-library-screen">
-      <div className="hero-phone-card">
-        <div className="eyebrow">Workflow Studio</div>
-        <h1>Workflows</h1>
-      </div>
-
-      <div className="library-toolbar panel">
-        <div className="library-toolbar-row">
-          <label className="field-label">
-            Search workflows
-            <input
-              className="text-input"
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Name, app, tag, or node label"
-            />
-          </label>
-          <label className="field-label">
-            Sort
-            <select value={sort} onChange={(event) => onSortChange(event.target.value)}>
-              <option value="updated">Recently updated</option>
-              <option value="opened">Recently opened</option>
-              <option value="name">Name</option>
-            </select>
-          </label>
-        </div>
-        <div className="library-toolbar-row">
-          <div className="hero-pills">
-            <span className="pill">{libraryView.stats.totalWorkflows} saved</span>
-            <span className="pill">{libraryView.stats.visibleWorkflows} visible</span>
-            <span className="pill">{libraryView.stats.totalNodes} total nodes</span>
-            <span className="pill">{libraryView.stats.uniqueTagCount} tags</span>
-          </div>
-          <button className="primary-button" onClick={onNewWorkflow}>New workflow</button>
-        </div>
-      </div>
-
-      <div className="workflow-phone-list">
-        {libraryView.items.map((workflow) => (
-          <button
-            key={workflow.id}
-            className={`workflow-phone-card workflow-library-card ${activeWorkflowId === workflow.id ? 'selected' : ''}`}
-            onClick={() => onOpenWorkflow(workflow.id)}
-          >
-            <div className="workflow-phone-card-top row-between">
-              <span className="pill">{workflow.appId}</span>
-              <span className="muted small-copy">v{workflow.version}</span>
-            </div>
-            <div className="workflow-phone-title">{workflow.name}</div>
-            <div className="muted small-copy">{workflow.description}</div>
-            <div className="workflow-card-meta">
-              <span>{workflow.nodes.length} nodes</span>
-              <span>{workflow.edges.length} edges</span>
-              <span>Updated {formatRelativeTime(workflow.metadata?.library?.updatedAt)}</span>
-            </div>
-            <div className="workflow-card-meta">
-              <span>Opened {formatRelativeTime(workflow.metadata?.library?.lastOpenedAt)}</span>
-              <span>{workflow.tags?.slice(0, 3).join(' · ') || 'No tags yet'}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {libraryView.items.length === 0 ? (
-        <div className="panel empty-library-state">
-          <div className="section-title">No workflows found</div>
-        </div>
-      ) : null}
-    </div>
-  )
 }
 
 function GraphView({ workflow, selectedNodeId, onSelectNode, zoom, pan, onPanChange, onZoomChange }) {
@@ -514,27 +414,6 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
   )
 }
 
-function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
-  const downloadOutput = runState?.nodeOutputs?.['download-file']
-  const storyOutput = runState?.nodeOutputs?.['prompt-edit-story'] || runState?.nodeOutputs?.['prompt-write-story']
-  const failureEvent = runState?.events?.findLast?.((event) => event.type === 'node-failed' || event.type === 'error')
-
-  return (
-    <div className="run-activity-panel mobile-run-panel">
-      <div className="section-title row-between">
-        <span>Run Activity</span>
-        <button className="primary-button" onClick={() => onRun(defaultTriggerNodeId)} disabled={running}>{running ? 'Running…' : 'Run workflow'}</button>
-      </div>
-      {failureEvent ? <div className="run-result-card failure-surface"><div><strong>Run failed</strong><div className="muted small-copy">{failureEvent.message || 'Unknown workflow error'}</div></div></div> : null}
-      {downloadOutput?.downloadUrl ? <div className="run-result-card success-surface"><div><strong>Your story is ready</strong><div className="muted small-copy">{downloadOutput.fileName}</div></div><a className="primary-button inline-button" href={downloadOutput.downloadUrl} download={downloadOutput.fileName}>Download story</a></div> : null}
-      {storyOutput?.editedText || storyOutput?.storyText ? <div className="story-preview"><div className="section-title">Story Preview</div><pre>{storyOutput.editedText || storyOutput.storyText}</pre></div> : null}
-      <div className="run-status-grid">
-        {runState ? Object.entries(runState.nodeStatus).map(([nodeId, status]) => <div key={nodeId} className={`status-item status-${status}`}><span>{nodeId}</span><strong>{status}</strong></div>) : <div className="muted">No run yet.</div>}
-      </div>
-    </div>
-  )
-}
-
 function NodeSelectionList({ workflow, selectedNodeId, onSelectNode }) {
   return (
     <div className="node-picker-list">
@@ -553,83 +432,6 @@ function NodeSelectionList({ workflow, selectedNodeId, onSelectNode }) {
         </button>
       ))}
     </div>
-  )
-}
-
-function WorkspaceTabBar({ activeTab, selectedNodeId, onChange }) {
-  const primaryTabs = [
-    { id: 'canvas', label: 'Canvas' },
-    { id: 'node', label: selectedNodeId ? 'Node' : 'Nodes' },
-    { id: 'run', label: 'Run' },
-  ]
-
-  const utilityTabs = [
-    { id: 'socrates', label: 'Socrates' },
-    { id: 'settings', label: 'Settings' },
-  ]
-
-  return (
-    <div className="workspace-nav-stack">
-      <nav className="workspace-tabbar" aria-label="Workflow workspace navigation">
-        {primaryTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`workspace-tab ${activeTab === tab.id ? 'active' : ''}`}
-            aria-pressed={activeTab === tab.id}
-            onClick={() => onChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      <div className="workspace-utility-row" aria-label="Authoring and settings shortcuts">
-        {utilityTabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`utility-chip ${activeTab === tab.id ? 'active' : ''}`}
-            aria-pressed={activeTab === tab.id}
-            onClick={() => onChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function WorkspaceHeader({ workflow, validation, selectedNode, running, onBackToLibrary, onRun, onOpenJson, onJumpToTab }) {
-  return (
-    <header className="phone-topbar sticky-workspace-header">
-      <div className="workspace-header-primary">
-        <button className="secondary-button" onClick={onBackToLibrary}>Library</button>
-        <div className="phone-topbar-center">
-          <div className="phone-topbar-title">{workflow?.name ?? 'Workflow'}</div>
-          <div className="muted small-copy">{workflow?.appId ?? 'unknown app'}</div>
-        </div>
-      </div>
-
-      <div className="workspace-header-summary panel premium-summary-card">
-        <div className="workflow-phone-card-top row-between">
-          <div className="section-title header-title-row">Workspace</div>
-          <div className="hero-pills">
-            <span className={`pill ${validation.ok ? 'status-healthy' : 'status-risk'}`}>{validation.ok ? 'Valid draft' : `${validation.errors.length} issue${validation.errors.length === 1 ? '' : 's'}`}</span>
-            <span className="pill">{workflow?.nodes?.length || 0} nodes</span>
-            <span className="pill">{workflow?.edges?.length || 0} edges</span>
-            {selectedNode ? <span className="pill">{selectedNode.label}</span> : null}
-          </div>
-        </div>
-        <div className="workspace-quick-actions workspace-primary-actions">
-          <button className="primary-button hero-action" onClick={onRun} disabled={running || !validation.ok}>{running ? 'Running…' : 'Run'}</button>
-          <button className="secondary-button" onClick={() => onJumpToTab('node')}>{selectedNode ? 'Edit node' : 'Nodes'}</button>
-          <button className="secondary-button" onClick={onOpenJson}>JSON</button>
-        </div>
-        <div className="workspace-secondary-links">
-          <button className="tertiary-button" onClick={() => onJumpToTab('socrates')}>Socrates</button>
-          <button className="tertiary-button" onClick={() => onJumpToTab('settings')}>Settings</button>
-        </div>
-      </div>
-    </header>
   )
 }
 

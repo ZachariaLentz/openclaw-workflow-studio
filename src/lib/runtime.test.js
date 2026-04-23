@@ -4,6 +4,7 @@ import { runWorkflow } from './runtime'
 
 describe('runWorkflow', () => {
   const storyWorkflow = () => structuredClone(sampleWorkflows.find((workflow) => workflow.id === 'childrens-story-book'))
+  const missionBriefingWorkflow = () => structuredClone(sampleWorkflows.find((workflow) => workflow.id === 'scheduled-mission-briefing'))
 
   it('completes the story flow and skips Google Drive when no account is connected', async () => {
     const workflow = storyWorkflow()
@@ -35,6 +36,47 @@ describe('runWorkflow', () => {
     expect(state.nodeOutputs['prompt-edit-story']).toMatchObject({
       editedText: expect.any(String),
       nodeKind: 'prompt',
+    })
+  })
+
+  it('runs the scheduled mission briefing workflow with honest blocked-source outputs and categorized downstream nodes', async () => {
+    const workflow = missionBriefingWorkflow()
+    const state = await runWorkflow(workflow)
+
+    expect(state.status).toBe('completed')
+    expect(state.nodeOutputs['calendar-fetch']).toMatchObject({
+      source: 'calendar',
+      blocked: true,
+      reason: 'missing-account',
+    })
+    expect(state.nodeOutputs['merge-inputs']).toMatchObject({
+      merged: {
+        blockedSources: expect.arrayContaining(['calendar-fetch', 'weather-fetch', 'system-project-status-fetch']),
+      },
+    })
+    expect(state.nodeOutputs['prioritize-classify'].counts.urgent).toBeGreaterThan(0)
+    expect(state.nodeOutputs['urgency-branch']).toMatchObject({
+      urgent: true,
+      route: 'urgent',
+    })
+    expect(state.nodeOutputs['brief-synthesis']).toMatchObject({
+      briefing: expect.stringContaining('Mission briefing'),
+      nodeKind: 'brief_synthesis',
+      placeholder: false,
+    })
+    expect(state.nodeOutputs['send-briefing']).toMatchObject({
+      delivered: false,
+      blocked: true,
+      reason: 'delivery-not-yet-implemented',
+    })
+    expect(state.nodeOutputs['persist-run-record']).toMatchObject({
+      stored: false,
+      placeholder: false,
+    })
+    expect(state.nodeOutputs['return-result']).toMatchObject({
+      resultSummary: {
+        status: 'ready',
+      },
     })
   })
 })

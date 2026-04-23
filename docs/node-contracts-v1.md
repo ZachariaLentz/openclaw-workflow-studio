@@ -288,6 +288,215 @@ For `cron expression`:
 - a real scheduled event can start the workflow through the intended runtime path
 - trigger metadata is visible in workflow run state
 
+## 10. Calendar Fetch
+
+### Purpose
+Fetch upcoming calendar events for a configured window, or surface an honest blocked/unavailable state when calendar access is not actually available.
+
+### Required configuration
+- enabled state
+- lookahead window
+- target calendar account/provider when live integration exists
+
+### Inputs
+- briefing config
+
+### Outputs
+- events array
+- window metadata
+- blocked/unavailable status
+- reason code when unavailable
+
+### Failure behavior
+- missing account must surface as blocked, not fake empty success
+- disabled state must be explicit
+- live integration errors must be visible in run state
+
+### Fully usable means
+- node can fetch real calendar events through the intended integration path
+- account/config validation works before or during run
+- blocked and unavailable states are understandable in the UI
+- downstream nodes can consume the output shape reliably
+
+## 11. Weather Fetch
+
+### Purpose
+Fetch weather context for a configured location, or surface an explicit fallback/disabled state honestly.
+
+### Required configuration
+- enabled state
+- location
+
+### Inputs
+- briefing config
+
+### Outputs
+- forecast object or null
+- enabled state
+- blocked/unavailable state
+- reason code
+
+### Failure behavior
+- disabled state must be explicit
+- integration failure must surface clearly
+- fallback summary must not pretend to be live weather
+
+### Fully usable means
+- node can fetch real weather through the intended path
+- location/config validation works
+- output clearly distinguishes live data from fallback/unavailable states
+
+## 12. System / Project Status Fetch
+
+### Purpose
+Collect operational/project status inputs relevant to a workflow run.
+
+### Required configuration
+- enabled state
+- source toggles such as repo/runtime health where applicable
+
+### Inputs
+- briefing config
+
+### Outputs
+- normalized status items
+- summary
+- blocked/unavailable state when live checks are not attached
+
+### Failure behavior
+- missing live executor path must surface honestly
+- partial-source failures must remain visible rather than disappearing
+
+### Fully usable means
+- node can gather real configured status inputs
+- result is normalized for downstream consumption
+- blocked and partial-failure states are visible in UI and runtime state
+
+## 13. Merge Inputs
+
+### Purpose
+Normalize multiple upstream source payloads into one predictable downstream object.
+
+### Required configuration
+- merge strategy or mapping definition
+
+### Inputs
+- two or more upstream source payloads
+
+### Outputs
+- merged normalized object
+- blocked-source metadata where relevant
+
+### Failure behavior
+- missing required source references are surfaced
+- incompatible payload assumptions are surfaced
+
+### Fully usable means
+- merged output is predictable and reusable beyond one workflow
+- blocked-source metadata remains visible downstream
+- config surface is understandable enough for reuse
+
+## 14. Prioritize / Classify
+
+### Purpose
+Classify normalized workflow context into urgency/action buckets.
+
+### Required configuration
+- rule set or threshold config
+
+### Inputs
+- merged normalized payload
+
+### Outputs
+- urgent/today/informational/ignore buckets
+- bucket counts
+
+### Failure behavior
+- invalid rule configuration must block or fail honestly
+- unsupported input shape must surface clearly
+
+### Fully usable means
+- node performs real classification logic
+- downstream nodes can rely on the bucketed output shape
+- rules are reusable beyond one hard-coded workflow
+
+## 15. Urgency Branch
+
+### Purpose
+Route workflow execution based on classified urgency.
+
+### Required configuration
+- route mapping or urgency condition definition
+
+### Inputs
+- classified priorities
+
+### Outputs
+- urgent boolean
+- route string
+- route metadata
+
+### Failure behavior
+- missing or invalid classification input must be surfaced
+- invalid route mapping must not silently pass
+
+### Fully usable means
+- routing decision is deterministic and visible
+- reusable route configuration exists in the UI
+
+## 16. Send Briefing
+
+### Purpose
+Deliver a synthesized briefing to a configured destination.
+
+### Required configuration
+- destination type
+- destination target
+
+### Inputs
+- briefing text
+- optional route/urgency metadata
+
+### Outputs
+- delivery result metadata
+- destination info
+- failure reason when not delivered
+
+### Failure behavior
+- delivery-not-implemented must remain explicit
+- destination/config problems must surface clearly
+- failed sends must not be reported as success
+
+### Fully usable means
+- a real destination can receive the briefing
+- delivery result is visible in workflow run state
+- retry/failure behavior is honest and understandable
+
+## 17. Persist Run Record
+
+### Purpose
+Store workflow run history for later inspection.
+
+### Required configuration
+- persistence target or store policy
+
+### Inputs
+- run summary
+- delivery result
+- final workflow context
+
+### Outputs
+- stored boolean
+- run record metadata
+
+### Failure behavior
+- non-persistent/in-memory fallback must be clearly marked
+- write failures must surface clearly
+
+### Fully usable means
+- run history is actually persisted through the intended path
+- stored records are later observable in the app
+
 ## Contract design notes
 - Workflow-specific behavior should be carried by configuration, prompt templates, and field mapping, not bespoke node types.
 - Socrates should help author node configuration and output expectations.

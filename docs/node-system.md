@@ -119,6 +119,44 @@ These are the first node types worth standardizing.
 - Purpose: end the workflow with a visible in-app result.
 - Reusable: yes.
 
+## Scheduled mission briefing node categorization status
+These nodes now have clearer product categories, but that does **not** automatically make them organizer-ready.
+
+### Source-category nodes
+- Calendar Fetch
+- Weather Fetch
+- System / Project Status Fetch
+
+Current truth:
+- they produce honest source-state payloads now
+- they are still not fully live integrations end to end
+- they should remain off-organizer until runtime path, config UI, validation, and failure handling are fully reusable
+
+### Data-category nodes
+- Merge Inputs
+
+Current truth:
+- it now performs a real normalized merge of upstream payloads
+- it is close to catalog-worthy, but should stay off-organizer until its configuration surface is explicitly reusable beyond this one workflow
+
+### Logic-category nodes
+- Prioritize / Classify
+- Urgency Branch
+
+Current truth:
+- both now perform real workflow logic instead of placeholder routing
+- they should stay workflow-scoped until their rule/config surfaces are reusable and understandable in the UI
+
+### Delivery / storage / UI terminal nodes
+- Send Briefing
+- Persist Run Record
+- Return Result
+
+Current truth:
+- Return Result remains the closest to organizer-ready because it already maps well to a generic terminal result surface
+- Send Briefing and Persist Run Record are still honest non-live scaffolds rather than fully usable reusable nodes
+- do not add them to the organizer yet
+
 ## Why Drive belongs under Integrations
 Google Drive is an external destination with its own auth, permissions, and service behavior.
 
@@ -141,6 +179,15 @@ For the general reusable node system, the recommended order is:
 4. Google Drive Save File
 5. Transform
 6. Branch
+
+## Current organizer-ready judgment
+As of the scheduled mission briefing categorization pass:
+- likely organizer-ready or close: Manual Trigger, Schedule Trigger, Prompt, Structured Prompt, Download File, Google Drive Save File, Return Result
+- not organizer-ready yet: Calendar Fetch, Weather Fetch, System / Project Status Fetch, Merge Inputs, Prioritize / Classify, Urgency Branch, Send Briefing, Persist Run Record
+
+Reason:
+- the second group is now more honestly categorized and behaviorally real inside the workflow
+- but they still lack at least one of the organizer admission requirements: fully reusable config UI, live runtime path, validation, or honest failure handling as standalone reusable nodes
 
 This gives Workflow Studio the fastest path to useful real workflows without prematurely widening the node surface.
 
