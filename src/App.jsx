@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { BottomSheet } from './components/BottomSheet'
+import { NodeConfigFields } from './components/NodeConfigFields'
 import { RunPanel } from './components/RunPanel'
 import { WorkflowLibraryScreen } from './components/WorkflowLibraryScreen'
 import { WorkspaceHeader } from './components/WorkspaceHeader'
@@ -24,6 +25,7 @@ import {
 } from './lib/bridge'
 import { getCompatibleAccounts, getToolRequirements } from './lib/accounts'
 import { clearBridgeUrl, getDefaultBridgeUrl, getSavedBridgeUrl, saveBridgeUrl } from './lib/bridgeConfig'
+import { getNodeEditorFields } from './lib/nodes/registry'
 import { buildWorkflowLibraryView, loadWorkflowLibrary, touchWorkflowOpened, upsertWorkflowInLibrary } from './lib/workflowLibrary'
 
 const initialWorkflows = loadWorkflowLibrary()
@@ -305,6 +307,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
   const latestStatus = runState?.nodeStatus?.[node.id] || 'idle'
   const requirements = getToolRequirements(node.toolId)
   const compatibleAccounts = getCompatibleAccounts(accounts, node.toolId)
+  const registryFields = getNodeEditorFields(node.toolId)
   const latestEvent = [...(runState?.events || [])].reverse().find((event) => event.nodeId === node.id)
   const latestInputNodeId = incomingEdges[incomingEdges.length - 1]?.from
   const latestInput = latestInputNodeId ? runState?.nodeOutputs?.[latestInputNodeId] : null
@@ -334,24 +337,7 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
       {isScheduleTrigger ? (
         <div className="node-info-card">
           <div className="section-title">Schedule</div>
-          <div className="config-grid">
-            <label className="field-label">
-              Mode
-              <select value={node.config?.scheduleMode ?? 'cron'} onChange={(event) => onPatchNode({ config: { ...node.config, scheduleMode: event.target.value } })}>
-                <option value="cron">Cron</option>
-                <option value="every">Every</option>
-                <option value="once">Once</option>
-              </select>
-            </label>
-            {node.config?.scheduleMode === 'cron' ? <label className="field-label">Cron<input className="text-input" value={node.config?.cronExpression ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, cronExpression: event.target.value } })} /></label> : null}
-            {node.config?.scheduleMode === 'every' ? <label className="field-label">Every<input className="text-input" value={node.config?.every ?? node.config?.everyMinutes ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, every: event.target.value, everyMinutes: undefined } })} placeholder="1h" /></label> : null}
-            {node.config?.scheduleMode === 'once' ? <label className="field-label">Run At<input className="text-input" value={node.config?.runAt ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, runAt: event.target.value } })} placeholder="2026-04-22T07:00" /></label> : null}
-            <label className="field-label">Timezone<input className="text-input" value={node.config?.timezone ?? 'UTC'} onChange={(event) => onPatchNode({ config: { ...node.config, timezone: event.target.value } })} /></label>
-            <label className="field-label checkbox-field">
-              <input type="checkbox" checked={node.config?.enabled !== false} onChange={(event) => onPatchNode({ config: { ...node.config, enabled: event.target.checked } })} />
-              <span>Enabled</span>
-            </label>
-          </div>
+          <NodeConfigFields node={node} fields={registryFields} accounts={accounts} onPatchNode={onPatchNode} />
           <div className="hero-pills">
             <span className="pill">{node.config?.cronJobId ? 'bound' : 'unbound'}</span>
             <span className="pill">{node.config?.scheduleSummary || 'No saved schedule yet'}</span>
@@ -379,23 +365,14 @@ function NodeDetailPanel({ node, tool, workflow, runState, onRunTrigger, onPatch
             Label
             <input className="text-input" value={node.label ?? ''} onChange={(event) => onPatchNode({ label: event.target.value })} />
           </label>
-          {node.config?.destination !== undefined ? <label className="field-label">Destination<input className="text-input" value={node.config?.destination ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, destination: event.target.value } })} /></label> : null}
-          {node.config?.fileNameTemplate !== undefined ? <label className="field-label">File Name Template<input className="text-input" value={node.config?.fileNameTemplate ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, fileNameTemplate: event.target.value } })} /></label> : null}
-          {node.config?.triggerLabel !== undefined ? <label className="field-label">Trigger Label<input className="text-input" value={node.config?.triggerLabel ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, triggerLabel: event.target.value } })} /></label> : null}
-          {node.config?.runtimeTarget !== undefined ? <label className="field-label">Runtime Target<input className="text-input" value={node.config?.runtimeTarget ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, runtimeTarget: event.target.value } })} /></label> : null}
         </div>
+        {!isScheduleTrigger && registryFields.length > 0 ? <NodeConfigFields node={node} fields={registryFields} accounts={accounts} onPatchNode={onPatchNode} /> : null}
       </div>
 
-      {requirements?.provider === 'google' ? (
+      {requirements?.provider === 'google' && compatibleAccounts.length === 0 ? (
         <div className="node-info-card">
           <div className="section-title">Connected Account</div>
-          {compatibleAccounts.length === 0 ? <div className="account-callout"><div className="muted">This node needs a Google account with Drive access.</div><button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button></div> : null}
-          <label className="field-label">Account
-            <select value={node.config?.accountId ?? ''} onChange={(event) => onPatchNode({ config: { ...node.config, accountId: event.target.value } })}>
-              <option value="">Select a connected Google account</option>
-              {compatibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
-            </select>
-          </label>
+          <div className="account-callout"><div className="muted">This node needs a Google account with Drive access.</div><button className="secondary-button" onClick={() => onConnectProvider('google')}>Connect Google account</button></div>
         </div>
       ) : null}
 
