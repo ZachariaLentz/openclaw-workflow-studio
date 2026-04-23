@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { executeNode } from '../runtime/executors'
+import { executeNode } from '../runtime/executors.js'
 
 const scheduleTriggerConfigSchema = z.object({
   triggerMode: z.string().optional(),

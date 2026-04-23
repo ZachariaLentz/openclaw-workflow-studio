@@ -1,4 +1,4 @@
-import { collectIncomingOutputs } from './core'
+import { collectIncomingOutputs } from './core.js'
 import {
   buildAffiliateTheme,
   buildContentPackFromProducts,
@@ -14,7 +14,7 @@ import {
   slugify,
   summarizeEvents,
   toDownloadUrl,
-} from './helpers'
+} from './helpers.js'
 
 async function executeStructuredPrompt(node, context) {
   if (context.liveExecutors?.generateStoryIdea) {

@@ -1,7 +1,7 @@
-import { getNodeExecutor } from './nodes/registry'
-import { depsSatisfied, getUsableParentOutput, shouldSkipNode } from './runtime/core'
-import { executeNode } from './runtime/executors'
-import { delay } from './runtime/helpers'
+import { getNodeExecutor } from './nodes/registry.js'
+import { depsSatisfied, getUsableParentOutput, shouldSkipNode } from './runtime/core.js'
+import { executeNode } from './runtime/executors.js'
+import { delay } from './runtime/helpers.js'
 
 export async function runWorkflow(workflow, onEvent, options = {}) {
   const triggerNodeId = options.triggerNodeId ?? workflow.entryNodeId ?? workflow.nodes.find((node) => node.type === 'trigger')?.id

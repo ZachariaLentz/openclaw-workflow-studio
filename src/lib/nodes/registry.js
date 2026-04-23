@@ -1,4 +1,4 @@
-import { nodeDefinitions } from './definitions'
+import { nodeDefinitions } from './definitions.js'
 
 export function getNodeDefinition(toolId) {
   return nodeDefinitions[toolId] || null
