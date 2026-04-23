@@ -81,47 +81,86 @@ describe('runWorkflow', () => {
     })
   })
 
-  it('runs the affiliate build-content-pack workflow into a review-ready content pack', async () => {
+  it('blocks the affiliate workflow when no real products are provided', async () => {
     const workflow = affiliateWorkflow()
     const state = await runWorkflow(workflow)
 
-    expect(state.status).toBe('completed')
-    expect(state.nodeOutputs['select-theme']).toMatchObject({
-      theme: {
-        title: expect.stringContaining('pantry organization'),
-      },
-    })
     expect(state.nodeOutputs['load-product-candidates']).toMatchObject({
-      products: expect.any(Array),
-      count: expect.any(Number),
-      placeholder: false,
+      products: [],
+      count: 0,
+      blocked: true,
+      reason: 'missing-real-product-input',
     })
-    expect(state.nodeOutputs['load-product-candidates'].products[0]).toMatchObject({
-      affiliateUrl: expect.any(String),
-      imageUrl: expect.any(String),
+  })
+
+  it('runs the affiliate build-content-pack workflow into a review-ready content pack with explicit approvals and real setup context', async () => {
+    const workflow = affiliateWorkflow()
+    const productNode = workflow.nodes.find((node) => node.id === 'load-product-candidates')
+    productNode.config = {
+      ...productNode.config,
+      productLines: [
+        'Clear pantry bin set | 24.99 | pantry-storage | pantry,clear bins | HomeNest | https://amazon.com/bin-set?tag=zach0lentz04-20 | https://example.com/bin-set.jpg',
+        'Tiered can rack | 19.99 | pantry-storage | pantry,cans | OrderlyCo | https://amazon.com/can-rack?tag=zach0lentz04-20 | https://example.com/can-rack.jpg',
+        'Acrylic lazy Susan | 18.99 | cabinet-organization | pantry,turntable | BrightHome | https://amazon.com/lazy-susan?tag=zach0lentz04-20 | https://example.com/lazy-susan.jpg',
+      ].join('\n'),
+    }
+    const reviewNode = workflow.nodes.find((node) => node.id === 'review-candidates')
+    reviewNode.config = {
+      ...reviewNode.config,
+      reviewDecisions: [
+        { productId: 'product-line-1', decision: 'approved', rationale: 'Strong pantry fit.' },
+        { productId: 'product-line-2', decision: 'approved', rationale: 'Useful supporting product.' },
+        { productId: 'product-line-3', decision: 'approved', rationale: 'Visual and practical.' },
+      ],
+    }
+
+    const state = await runWorkflow(workflow)
+
+    expect(state.status).toBe('completed')
+    expect(state.nodeOutputs['load-product-candidates']).toMatchObject({
+      count: 3,
+      fallback: false,
     })
-    expect(state.nodeOutputs['review-candidates']).toBeDefined()
     expect(state.nodeOutputs['review-candidates']).toMatchObject({
       decision: {
         reviewMode: 'pre-score-candidate-gate',
-        reviewedProducts: expect.any(Array),
-        approvedCount: expect.any(Number),
+        approvedCount: 3,
+        requireExplicitApproval: true,
       },
     })
     expect(state.nodeOutputs['filter-approved-candidates']).toMatchObject({
       approvedProducts: expect.any(Array),
-      rejectedProducts: expect.any(Array),
       blocked: false,
     })
-    expect(state.nodeOutputs['score-products'].scoredProducts.length).toBeGreaterThan(0)
-    expect(state.nodeOutputs['select-roundup-set']).toMatchObject({
-      selectedProducts: expect.any(Array),
-      alternateProducts: expect.any(Array),
+    expect(state.nodeOutputs['validate-affiliate-links']).toMatchObject({
+      validationSummary: {
+        validProductCount: 3,
+        invalidProductCount: 0,
+      },
+      blocked: false,
+    })
+    expect(state.nodeOutputs['collect-pinterest-publishing-setup']).toMatchObject({
+      pinterestPublishingSetup: {
+        username: 'zach0lentz',
+      },
+    })
+    expect(state.nodeOutputs['collect-amazon-affiliate-setup']).toMatchObject({
+      amazonAffiliateSetup: {
+        associatesTag: 'zach0lentz04-20',
+        marketplace: 'amazon.com',
+        directLinkFallbackAllowed: true,
+      },
     })
     expect(state.nodeOutputs['generate-content-pack']).toMatchObject({
       contentPackDraft: {
         title: expect.any(String),
         pinTitleVariants: expect.any(Array),
+        pinterestPublishingSetup: {
+          username: 'zach0lentz',
+        },
+        amazonAffiliateSetup: {
+          associatesTag: 'zach0lentz04-20',
+        },
       },
       nodeKind: 'affiliate_content_pack',
     })
@@ -134,6 +173,9 @@ describe('runWorkflow', () => {
         reviewReady: true,
         selectedProducts: expect.any(Array),
         creativeAssets: expect.any(Array),
+        disclosurePolicy: {
+          channel: 'pinterest',
+        },
       },
     })
     expect(state.nodeOutputs['return-content-pack']).toMatchObject({
@@ -141,6 +183,12 @@ describe('runWorkflow', () => {
         status: 'review-ready',
         contentPack: {
           reviewReady: true,
+        },
+        pinterestPublishingSetup: {
+          username: 'zach0lentz',
+        },
+        amazonAffiliateSetup: {
+          associatesTag: 'zach0lentz04-20',
         },
       },
     })
@@ -153,6 +201,14 @@ describe('runWorkflow', () => {
       ...productNode.config,
       sourceType: 'research',
       maxCandidates: 2,
+    }
+    const reviewNode = workflow.nodes.find((node) => node.id === 'review-candidates')
+    reviewNode.config = {
+      ...reviewNode.config,
+      reviewDecisions: [
+        { productId: 'researched-1', decision: 'approved', rationale: 'High fit.' },
+        { productId: 'researched-2', decision: 'approved', rationale: 'Good visual candidate.' },
+      ],
     }
 
     const state = await runWorkflow(workflow, undefined, {
@@ -202,6 +258,7 @@ describe('runWorkflow', () => {
       count: 2,
     })
     expect(state.nodeOutputs['filter-approved-candidates'].approvedProducts.length).toBeGreaterThan(0)
+    expect(state.nodeOutputs['validate-affiliate-links'].validationSummary.validProductCount).toBe(2)
     expect(state.nodeOutputs['load-product-candidates'].products[0]).toMatchObject({
       source: 'research',
       confidence: 0.93,

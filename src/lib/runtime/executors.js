@@ -5,7 +5,6 @@ import {
   buildFileName,
   buildPriorityItem,
   formatScheduleSummary,
-  getDefaultAffiliateProducts,
   getPromptText,
   getTimestamp,
   inferPriorityFromItem,
@@ -418,7 +417,7 @@ export async function executeNode(node, context) {
           ? parsedProducts
           : Array.isArray(lineProducts) && lineProducts.length > 0
             ? lineProducts
-            : getDefaultAffiliateProducts())
+            : [])
           .slice(0, Number(node.config?.maxCandidates || 50))
           .map((product, index) => ({
             id: product.id || `product-${index + 1}`,
@@ -432,22 +431,69 @@ export async function executeNode(node, context) {
             canonicalUrl: product.canonicalUrl || product.url || '',
             affiliateUrl: product.affiliateUrl || product.canonicalUrl || product.url || '',
             imageUrl: product.imageUrl || '',
-            source: product.source || (usingOperatorProducts ? 'operator' : 'fallback'),
-            confidence: product.confidence ?? (usingOperatorProducts ? 0.8 : 0.65),
+            source: product.source || 'operator',
+            confidence: product.confidence ?? 0.8,
             rationale: product.rationale || '',
           }))
 
+        if (!usingOperatorProducts && sourceType !== 'research') {
+          return {
+            message: 'Product candidate source requires real operator-provided products for the manual-first money path',
+            output: {
+              source: sourceType,
+              products: [],
+              count: 0,
+              live: false,
+              placeholder: false,
+              fallback: false,
+              blocked: true,
+              reason: 'missing-real-product-input',
+            },
+          }
+        }
+
         return {
-          message: usingOperatorProducts
-            ? 'Product candidate source loaded operator-provided products'
-            : 'Product candidate source loaded a fallback affiliate product set',
+          message: 'Product candidate source loaded operator-provided products',
           output: {
             source: sourceType,
             products,
             count: products.length,
             live: false,
             placeholder: false,
-            fallback: !usingOperatorProducts,
+            fallback: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'config.pinterest_publishing_setup') {
+        const defaults = node.config?.defaults || {}
+        return {
+          message: 'Pinterest Publishing Setup loaded manual publishing defaults',
+          output: {
+            pinterestPublishingSetup: {
+              username: defaults.username || '',
+              email: defaults.email || '',
+              profileUrl: defaults.profileUrl || '',
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'config.amazon_affiliate_setup') {
+        const defaults = node.config?.defaults || {}
+        return {
+          message: 'Amazon Affiliate Setup loaded manual affiliate defaults',
+          output: {
+            amazonAffiliateSetup: {
+              associatesTag: defaults.associatesTag || '',
+              marketplace: defaults.marketplace || 'amazon.com',
+              landingPageUrl: defaults.landingPageUrl || '',
+              directLinkFallbackAllowed: defaults.directLinkFallbackAllowed === true,
+            },
+            live: false,
+            placeholder: false,
           },
         }
       }
@@ -576,18 +622,44 @@ export async function executeNode(node, context) {
       }
 
       if (node.toolId === 'ai.generate_content_pack') {
-        const selectedProducts = context.lastOutput?.selectedProducts || []
-        const alternateProducts = context.lastOutput?.alternateProducts || []
         const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const selectedProducts = incoming.find((item) => Array.isArray(item.output?.selectedProducts))?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => Array.isArray(item.output?.alternateProducts))?.output?.alternateProducts || []
         const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
-        const contentPackDraft = buildContentPackFromProducts(theme, selectedProducts, alternateProducts)
+        const pinterestPublishingSetup = incoming.find((item) => item.output?.pinterestPublishingSetup)?.output?.pinterestPublishingSetup || null
+        const amazonAffiliateSetup = incoming.find((item) => item.output?.amazonAffiliateSetup)?.output?.amazonAffiliateSetup || null
+        const validationSummary = incoming.find((item) => item.output?.validationSummary)?.output?.validationSummary || null
+        const disclosurePolicy = incoming.find((item) => item.output?.disclosurePolicy)?.output?.disclosurePolicy || null
+        const destinationPolicy = incoming.find((item) => item.output?.destinationPolicy)?.output?.destinationPolicy || null
+
+        if (selectedProducts.length === 0) {
+          return {
+            message: 'Generate Content Pack blocked because there are no explicitly approved, valid products to use',
+            output: {
+              contentPackDraft: null,
+              live: false,
+              fallback: false,
+              placeholder: false,
+              blocked: true,
+              reason: 'no-valid-approved-products',
+            },
+          }
+        }
+
+        const contentPackDraft = buildContentPackFromProducts(theme, selectedProducts, alternateProducts, {
+          pinterestPublishingSetup,
+          amazonAffiliateSetup,
+          validationSummary,
+          disclosurePolicy,
+          destinationPolicy,
+        })
 
         return {
           message: 'Generate Content Pack produced a review-ready affiliate draft package',
           output: {
             contentPackDraft,
             live: false,
-            fallback: true,
+            fallback: false,
             placeholder: false,
             nodeKind: 'affiliate_content_pack',
           },
@@ -773,19 +845,8 @@ export async function executeNode(node, context) {
         const reviewItems = Array.isArray(decision.reviewedProducts) ? decision.reviewedProducts : []
         const approvedIds = new Set(reviewItems.filter((item) => item.decision === 'approved').map((item) => item.productId))
         const rejectedIds = new Set(reviewItems.filter((item) => item.decision === 'rejected').map((item) => item.productId))
-        const minApprovedCount = Number(node.config?.minApprovedCount || 0)
-        const hasExplicitReview = reviewItems.length > 0
 
-        let approvedProducts = hasExplicitReview
-          ? candidateProducts.filter((product) => approvedIds.has(product.id))
-          : candidateProducts.filter((product) => !rejectedIds.has(product.id))
-        if (approvedProducts.length < minApprovedCount && node.config?.fallbackMode === 'top-reviewed') {
-          approvedProducts = [...candidateProducts]
-            .sort((a, b) => (Number(b.reviewCount || 0) - Number(a.reviewCount || 0)))
-            .slice(0, Math.max(minApprovedCount, approvedProducts.length || 0))
-            .map((product) => ({ ...product, approvalFallback: true }))
-        }
-
+        const approvedProducts = candidateProducts.filter((product) => approvedIds.has(product.id))
         const rejectedProducts = candidateProducts.filter((product) => rejectedIds.has(product.id))
 
         return {
@@ -842,6 +903,101 @@ export async function executeNode(node, context) {
             alternateProducts,
             live: false,
             placeholder: false,
+            blocked: selectedProducts.length === 0,
+            reason: selectedProducts.length === 0 ? 'no-scored-products' : null,
+          },
+        }
+      }
+
+      if (node.toolId === 'data.validate_affiliate_links') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const selectedProducts = incoming.find((item) => Array.isArray(item.output?.selectedProducts))?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => Array.isArray(item.output?.alternateProducts))?.output?.alternateProducts || []
+        const requireImageUrl = node.config?.requireImageUrl !== false
+        const validProducts = []
+        const invalidProducts = []
+
+        for (const product of selectedProducts) {
+          const missingFields = []
+          if (!product.affiliateUrl) missingFields.push('affiliateUrl')
+          if (!product.canonicalUrl) missingFields.push('canonicalUrl')
+          if (requireImageUrl && !product.imageUrl) missingFields.push('imageUrl')
+          if (missingFields.length > 0) invalidProducts.push({ ...product, missingFields })
+          else validProducts.push(product)
+        }
+
+        return {
+          message: validProducts.length > 0
+            ? 'Validate Affiliate Links kept products with complete affiliate fields'
+            : 'Validate Affiliate Links found no fully valid affiliate products',
+          output: {
+            validProducts,
+            invalidProducts,
+            selectedProducts: validProducts,
+            alternateProducts,
+            validationSummary: {
+              validProductCount: validProducts.length,
+              invalidProductCount: invalidProducts.length,
+              blocked: validProducts.length === 0,
+            },
+            live: false,
+            placeholder: false,
+            blocked: validProducts.length === 0,
+            reason: validProducts.length === 0 ? 'missing-valid-affiliate-fields' : null,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.apply_disclosure_policy') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const selectedProducts = incoming.find((item) => Array.isArray(item.output?.selectedProducts))?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => Array.isArray(item.output?.alternateProducts))?.output?.alternateProducts || []
+        const validationSummary = incoming.find((item) => item.output?.validationSummary)?.output?.validationSummary || null
+        const amazonAffiliateSetup = incoming.find((item) => item.output?.amazonAffiliateSetup)?.output?.amazonAffiliateSetup || {}
+        return {
+          message: 'Apply Disclosure Policy prepared Amazon and Pinterest disclosure requirements',
+          output: {
+            selectedProducts,
+            alternateProducts,
+            validationSummary,
+            amazonAffiliateSetup,
+            disclosurePolicy: {
+              channel: node.config?.channel || 'pinterest',
+              merchant: node.config?.merchant || 'amazon',
+              primaryDisclosure: `This post contains affiliate links for ${amazonAffiliateSetup.marketplace || 'Amazon'}. I may earn a commission if you buy through these links.`,
+              pinterestDisclosure: 'Affiliate links included.',
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.set_destination_policy') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const selectedProducts = incoming.find((item) => Array.isArray(item.output?.selectedProducts))?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => Array.isArray(item.output?.alternateProducts))?.output?.alternateProducts || []
+        const validationSummary = incoming.find((item) => item.output?.validationSummary)?.output?.validationSummary || null
+        const disclosurePolicy = incoming.find((item) => item.output?.disclosurePolicy)?.output?.disclosurePolicy || null
+        const amazonAffiliateSetup = incoming.find((item) => item.output?.amazonAffiliateSetup)?.output?.amazonAffiliateSetup || {}
+        const destinationUrl = amazonAffiliateSetup.landingPageUrl || (amazonAffiliateSetup.directLinkFallbackAllowed ? selectedProducts[0]?.affiliateUrl || '' : '')
+        return {
+          message: 'Set Destination Policy prepared landing-page-first destination handling',
+          output: {
+            selectedProducts,
+            alternateProducts,
+            validationSummary,
+            disclosurePolicy,
+            amazonAffiliateSetup,
+            destinationPolicy: {
+              destinationType: amazonAffiliateSetup.landingPageUrl ? 'landing-page' : 'direct-affiliate-link',
+              destinationUrl,
+              directLinkFallbackAllowed: amazonAffiliateSetup.directLinkFallbackAllowed === true,
+            },
+            live: false,
+            placeholder: false,
+            blocked: !destinationUrl,
+            reason: !destinationUrl ? 'missing-destination-url' : null,
           },
         }
       }
@@ -864,9 +1020,14 @@ export async function executeNode(node, context) {
       if (node.toolId === 'data.assemble_content_pack') {
         const contentPackDraft = context.lastOutput?.contentPackDraft || {}
         const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
-        const selectedProducts = incoming.find((item) => item.from === 'select-roundup-set')?.output?.selectedProducts || []
-        const alternateProducts = incoming.find((item) => item.from === 'select-roundup-set')?.output?.alternateProducts || []
+        const selectedProducts = incoming.find((item) => Array.isArray(item.output?.selectedProducts))?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => Array.isArray(item.output?.alternateProducts))?.output?.alternateProducts || []
         const creativeAssets = incoming.find((item) => item.from === 'generate-creative-briefs')?.output?.creativeAssets || []
+        const pinterestPublishingSetup = incoming.find((item) => item.output?.pinterestPublishingSetup)?.output?.pinterestPublishingSetup || null
+        const amazonAffiliateSetup = incoming.find((item) => item.output?.amazonAffiliateSetup)?.output?.amazonAffiliateSetup || null
+        const validationSummary = incoming.find((item) => item.output?.validationSummary)?.output?.validationSummary || null
+        const disclosurePolicy = incoming.find((item) => item.output?.disclosurePolicy)?.output?.disclosurePolicy || null
+        const destinationPolicy = incoming.find((item) => item.output?.destinationPolicy)?.output?.destinationPolicy || null
 
         return {
           message: 'Assemble Content Pack created a review-ready affiliate artifact',
@@ -877,6 +1038,11 @@ export async function executeNode(node, context) {
               selectedProducts,
               alternateProducts,
               creativeAssets,
+              pinterestPublishingSetup,
+              amazonAffiliateSetup,
+              validationSummary,
+              disclosurePolicy,
+              destinationPolicy,
               reviewReady: true,
             },
             live: false,
@@ -1021,27 +1187,30 @@ export async function executeNode(node, context) {
         const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
         const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
         const products = incoming.find((item) => Array.isArray(item.output?.products))?.output?.products || []
-        const minApprovedCount = Number(node.config?.minApprovedCount || 0)
-        const defaultDecision = node.config?.defaultDecision || 'approved'
-        const reviewedProducts = products.map((product, index) => ({
-          productId: product.id,
-          title: product.title,
-          decision: index < Math.max(minApprovedCount, Math.min(products.length, 10)) ? 'approved' : defaultDecision,
-          rationale: (index < Math.max(minApprovedCount, Math.min(products.length, 10)) || defaultDecision === 'approved')
-            ? 'Kept as a strong candidate for the roundup.'
-            : 'Rejected before scoring.',
-        }))
+        const reviewDecisions = Array.isArray(node.config?.reviewDecisions) ? node.config.reviewDecisions : []
+        const decisionMap = new Map(reviewDecisions.map((item) => [item.productId, item]))
+        const reviewedProducts = products.map((product) => {
+          const override = decisionMap.get(product.id)
+          return {
+            productId: product.id,
+            title: product.title,
+            decision: override?.decision || 'rejected',
+            rationale: override?.rationale || 'Awaiting explicit human approval.',
+          }
+        })
+        const approvedCount = reviewedProducts.filter((item) => item.decision === 'approved').length
 
         return {
           message: 'Review Candidates created a structured approval set before scoring',
           output: {
             decision: {
-              decision: 'approved',
+              decision: approvedCount > 0 ? 'approved' : 'blocked',
               theme,
               reviewedProducts,
-              approvedCount: reviewedProducts.filter((item) => item.decision === 'approved').length,
+              approvedCount,
               rejectedCount: reviewedProducts.filter((item) => item.decision === 'rejected').length,
               reviewMode: 'pre-score-candidate-gate',
+              requireExplicitApproval: node.config?.requireExplicitApproval === true,
             },
             live: false,
             placeholder: false,
@@ -1137,6 +1306,8 @@ export async function executeNode(node, context) {
               status: contentPack?.reviewReady ? 'review-ready' : (runRecord.delivered ? 'delivered' : 'ready'),
               runRecord,
               contentPack,
+              pinterestPublishingSetup: contentPack?.pinterestPublishingSetup || null,
+              amazonAffiliateSetup: contentPack?.amazonAffiliateSetup || null,
               nextAction: contentPack?.reviewReady
                 ? 'Review the generated affiliate content pack, edit if needed, and prepare Pinterest publishing.'
                 : (runRecord.recommendedNextAction || null),

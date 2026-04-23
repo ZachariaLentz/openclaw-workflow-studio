@@ -135,8 +135,35 @@ export function RunPanel({ runState, running, onRun, defaultTriggerNodeId }) {
             </div>
 
             <div className="affiliate-pack-section">
+              <div className="section-title">Publishing setup</div>
+              <pre>{[
+                `Pinterest username: ${affiliatePack.pinterestPublishingSetup?.username || 'missing'}`,
+                `Pinterest email: ${affiliatePack.pinterestPublishingSetup?.email || 'missing'}`,
+                `Pinterest profile: ${affiliatePack.pinterestPublishingSetup?.profileUrl || 'missing'}`,
+                `Amazon tag: ${affiliatePack.amazonAffiliateSetup?.associatesTag || 'missing'}`,
+                `Marketplace: ${affiliatePack.amazonAffiliateSetup?.marketplace || 'missing'}`,
+                `Landing page: ${affiliatePack.amazonAffiliateSetup?.landingPageUrl || 'none yet'}`,
+                `Direct-link fallback: ${affiliatePack.amazonAffiliateSetup?.directLinkFallbackAllowed ? 'yes' : 'no'}`,
+              ].join('\n')}</pre>
+            </div>
+
+            <div className="affiliate-pack-section">
               <div className="section-title">Disclosure</div>
               <pre>{affiliatePack.disclosureText}</pre>
+            </div>
+
+            <div className="affiliate-pack-section">
+              <div className="section-title">Destination</div>
+              <pre>{affiliatePack.destinationPolicy?.destinationUrl || affiliatePack.destinationUrl || 'missing'}</pre>
+            </div>
+
+            <div className="affiliate-pack-section">
+              <div className="section-title">Validation summary</div>
+              <pre>{[
+                `Valid products: ${affiliatePack.validationSummary?.validProductCount ?? 0}`,
+                `Invalid products: ${affiliatePack.validationSummary?.invalidProductCount ?? 0}`,
+                `Blocked: ${affiliatePack.validationSummary?.blocked ? 'yes' : 'no'}`,
+              ].join('\n')}</pre>
             </div>
 
             <div className="affiliate-pack-section">

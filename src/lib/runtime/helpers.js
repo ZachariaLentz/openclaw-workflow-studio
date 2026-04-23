@@ -346,7 +346,14 @@ export function parseSimpleProductLines(value = '') {
     })
 }
 
-export function buildContentPackFromProducts(theme, selectedProducts = [], alternates = []) {
+export function buildContentPackFromProducts(theme, selectedProducts = [], alternates = [], options = {}) {
+  const {
+    pinterestPublishingSetup = null,
+    amazonAffiliateSetup = null,
+    validationSummary = null,
+    disclosurePolicy = null,
+    destinationPolicy = null,
+  } = options
   const title = theme.title || 'Practical home organization finds'
   const pinTitleVariants = [
     title,
@@ -365,6 +372,13 @@ export function buildContentPackFromProducts(theme, selectedProducts = [], alter
     score: product.scores?.totalScore ?? null,
   }))
 
+  const destinationUrl = destinationPolicy?.destinationUrl
+    || amazonAffiliateSetup?.landingPageUrl
+    || selectedProducts[0]?.affiliateUrl
+    || `https://example.com/${slugify(title) || 'affiliate-roundup'}`
+  const disclosureText = disclosurePolicy?.primaryDisclosure
+    || 'This post contains affiliate links. I may earn a commission if you buy through these links.'
+
   return {
     id: `content-pack-${slugify(title) || 'affiliate-pack'}`,
     nicheId: theme.nicheId || 'niche-home-organization',
@@ -380,10 +394,24 @@ export function buildContentPackFromProducts(theme, selectedProducts = [], alter
     roundupIntro: 'If your pantry feels cramped, these practical organization finds can make a small kitchen easier to manage without turning it into a giant project.',
     roundupOutro: 'A few well-chosen storage upgrades can make everyday kitchen life feel calmer, cleaner, and easier to maintain.',
     productBlurbs,
-    disclosureText: 'This post contains affiliate links. I may earn a commission if you buy through these links.',
-    destinationUrl: `https://example.com/${slugify(title) || 'affiliate-roundup'}`,
+    disclosureText,
+    destinationUrl,
+    pinterestPublishingSetup,
+    amazonAffiliateSetup,
+    validationSummary,
+    disclosurePolicy,
+    destinationPolicy,
     exportBlock: [
       `TITLE: ${title}`,
+      '',
+      'PUBLISHING SETUP:',
+      `- Pinterest username: ${pinterestPublishingSetup?.username || 'missing'}`,
+      `- Pinterest email: ${pinterestPublishingSetup?.email || 'missing'}`,
+      `- Pinterest profile: ${pinterestPublishingSetup?.profileUrl || 'missing'}`,
+      `- Amazon tag: ${amazonAffiliateSetup?.associatesTag || 'missing'}`,
+      `- Amazon marketplace: ${amazonAffiliateSetup?.marketplace || 'missing'}`,
+      `- Landing page: ${amazonAffiliateSetup?.landingPageUrl || 'none yet'}`,
+      `- Direct-link fallback allowed: ${amazonAffiliateSetup?.directLinkFallbackAllowed ? 'yes' : 'no'}`,
       '',
       'PIN TITLES:',
       ...pinTitleVariants.map((item) => `- ${item}`),
@@ -394,7 +422,10 @@ export function buildContentPackFromProducts(theme, selectedProducts = [], alter
       'PRODUCT BLURBS:',
       ...productBlurbs.map((item) => `- ${item.title}: ${item.blurb}`),
       '',
-      `DISCLOSURE: ${'This post contains affiliate links. I may earn a commission if you buy through these links.'}`,
+      `DISCLOSURE: ${disclosureText}`,
+      `DESTINATION: ${destinationUrl}`,
+      `VALID PRODUCTS: ${validationSummary?.validProductCount ?? selectedProducts.length}`,
+      `INVALID PRODUCTS: ${validationSummary?.invalidProductCount ?? 0}`,
     ].join('\n'),
   }
 }
