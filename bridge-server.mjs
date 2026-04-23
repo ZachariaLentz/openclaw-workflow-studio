@@ -117,6 +117,50 @@ async function writeStoryViaAgent(storyIdea, promptOverride) {
   }
 }
 
+async function researchAffiliateProductsViaAgent({ theme, maxCandidates = 10, includeAffiliateFields = true } = {}) {
+  const prompt = [
+    'You are researching Amazon-friendly affiliate product candidates for a Pinterest-first roundup workflow.',
+    'Return plain JSON only.',
+    'Return an array, not an object.',
+    'Each array item must have exactly these keys when available:',
+    JSON.stringify({
+      title: 'string',
+      category: 'string',
+      price: 'number',
+      brand: 'string',
+      rating: 'number',
+      reviewCount: 'number',
+      tags: ['string'],
+      canonicalUrl: 'string',
+      affiliateUrl: includeAffiliateFields ? 'string' : 'string|null',
+      imageUrl: 'string',
+      source: 'string',
+      confidence: 'number',
+      rationale: 'string',
+    }, null, 2),
+    'Use real-looking product candidates appropriate for the theme. Prefer practical, visually clear, Pinterest-friendly products.',
+    'Do not add commentary outside the JSON array.',
+    `Maximum candidates: ${maxCandidates}.`,
+    'Theme JSON:',
+    JSON.stringify(theme || {}, null, 2),
+  ].join('\n\n')
+
+  const raw = await runDaedalus(prompt, 90)
+
+  try {
+    const parsed = JSON.parse(raw)
+    return {
+      raw,
+      parsed: Array.isArray(parsed) ? parsed : [],
+    }
+  } catch {
+    return {
+      raw,
+      parsed: [],
+    }
+  }
+}
+
 async function parseJsonStdout(command, args) {
   const { stdout } = await execFileAsync(command, args, {
     cwd: process.cwd(),
@@ -862,6 +906,7 @@ const server = http.createServer(async (req, res) => {
             '/api/story-idea',
             '/api/write-story',
             '/api/edit-story',
+            '/api/research-affiliate-products',
             '/api/google-drive/save-file',
             '/api/socrates-chat',
           ],
@@ -871,6 +916,7 @@ const server = http.createServer(async (req, res) => {
             'trigger.manual',
             'ai.structured_prompt',
             'ai.prompt',
+            'sources.product_candidates (research mode)',
             'integrations.google_drive.save_file',
             'outputs.download_file',
           ],
@@ -1312,6 +1358,33 @@ const server = http.createServer(async (req, res) => {
         source: 'openclaw agent --agent daedalus',
         live: true,
         editedStory: parsed,
+        raw,
+      })
+      return
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/research-affiliate-products') {
+      const parsedBody = await readJsonBody(req)
+      const theme = parsedBody.theme
+      const maxCandidates = Number(parsedBody.maxCandidates || 10)
+      const includeAffiliateFields = parsedBody.includeAffiliateFields !== false
+
+      if (!theme || typeof theme !== 'object') {
+        sendError(res, 400, 'missing_theme', 'theme JSON body is required.')
+        return
+      }
+
+      const { raw, parsed } = await researchAffiliateProductsViaAgent({
+        theme,
+        maxCandidates,
+        includeAffiliateFields,
+      })
+
+      sendJson(res, 200, {
+        ok: true,
+        source: 'openclaw agent --agent daedalus',
+        live: true,
+        products: parsed,
         raw,
       })
       return

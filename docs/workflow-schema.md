@@ -53,6 +53,22 @@ Natural language is the preferred authoring interface. JSON is the canonical sto
 - `outputSchema`
 - `sideEffectLevel`
 
+Supported v1 `kind` values:
+- `openclaw`
+- `local-cli`
+- `api`
+- `composite`
+- `simulated`
+- `system`
+- `logic`
+- `storage`
+- `ui`
+- `source`
+- `data`
+- `delivery`
+- `approval`
+- `integration`
+
 ## Validation rules
 - referenced nodes must exist
 - entry node must exist if provided

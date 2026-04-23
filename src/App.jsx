@@ -9,7 +9,7 @@ import { WorkspaceTabBar } from './components/WorkspaceTabBar'
 import { validateWorkflow } from './lib/schema'
 import { runWorkflow } from './lib/runtime'
 import { loadLocalConnectionState } from './lib/liveWorkflow'
-import { editStory, generateStoryIdea, saveFileToGoogleDrive, writeStory } from './lib/openclaw'
+import { editStory, generateStoryIdea, researchAffiliateProducts, saveFileToGoogleDrive, writeStory } from './lib/openclaw'
 import { sendToSocrates } from './lib/socrates'
 import { applySocratesChange } from './lib/socratesProtocol'
 import { createBlankWorkflow } from './lib/newWorkflow'
@@ -840,7 +840,7 @@ function App() {
         rememberWorkspaceTab('run')
       }, {
         triggerNodeId,
-        liveExecutors: connection.connected ? { generateStoryIdea, writeStory, editStory, saveFileToGoogleDrive } : undefined,
+        liveExecutors: connection.connected ? { generateStoryIdea, writeStory, editStory, saveFileToGoogleDrive, researchAffiliateProducts } : undefined,
       })
     } finally {
       setRunning(false)

@@ -12,7 +12,7 @@ export const nodeTypeEnum = z.enum([
   'output',
 ])
 
-export const toolKindEnum = z.enum(['openclaw', 'local-cli', 'api', 'composite', 'simulated', 'system', 'logic', 'storage', 'ui', 'source', 'data', 'delivery'])
+export const toolKindEnum = z.enum(['openclaw', 'local-cli', 'api', 'composite', 'simulated', 'system', 'logic', 'storage', 'ui', 'source', 'data', 'delivery', 'approval', 'integration'])
 
 export const workflowNodeSchema = z.object({
   id: z.string().min(1),

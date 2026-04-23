@@ -20,6 +20,11 @@ Endpoints:
 - `GET /health`
 - `GET /api/status`
 - `GET /api/capabilities`
+- `POST /api/story-idea`
+- `POST /api/write-story`
+- `POST /api/edit-story`
+- `POST /api/research-affiliate-products`
+- `POST /api/google-drive/save-file`
 
 ## Why this shape
 This gives the website a real connection to Zacharia's local OpenClaw environment without immediately exposing tool execution, session writes, cron writes, or arbitrary shell access.
@@ -45,3 +50,12 @@ After the read-only bridge is stable, add one narrow real data path such as:
 - fetch local tool/session metadata from curated OpenClaw calls
 
 Do not jump straight to arbitrary command passthrough.
+
+## Current narrow write endpoints
+The local bridge now also includes a few narrow, workflow-specific write/agent endpoints used by the Studio runtime:
+- story idea generation
+- story writing/editing
+- Google Drive save-file
+- affiliate product research via Daedalus
+
+The affiliate research endpoint is intended to return structured candidate records for Workflow Studio, including product URLs and optional affiliate/image fields when available.

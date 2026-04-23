@@ -48,6 +48,11 @@ describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear()
     vi.stubGlobal('fetch', mockBridgeFetch())
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    })
   })
 
   it('renders the workflow library with organization controls', async () => {
@@ -58,7 +63,7 @@ describe('App', () => {
     expect(screen.getByRole('combobox', { name: /Sort/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New workflow' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /Children’s Story: Manual Trigger/i })).toBeInTheDocument()
-    expect(screen.getByText(/2 saved/i)).toBeInTheDocument()
+    expect(screen.getByText(/5 saved/i)).toBeInTheDocument()
   })
 
   it('opens the workflow into a mobile workspace with persistent tabs', async () => {

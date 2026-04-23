@@ -1,12 +1,18 @@
 import { collectIncomingOutputs } from './core'
 import {
+  buildAffiliateTheme,
+  buildContentPackFromProducts,
   buildFileName,
   buildPriorityItem,
   formatScheduleSummary,
+  getDefaultAffiliateProducts,
   getPromptText,
   getTimestamp,
   inferPriorityFromItem,
   inferStoryTitle,
+  parseSimpleProductLines,
+  scoreProductCandidate,
+  slugify,
   summarizeEvents,
   toDownloadUrl,
 } from './helpers'
@@ -354,6 +360,137 @@ export async function executeNode(node, context) {
         }
       }
 
+      if (node.toolId === 'sources.product_candidates') {
+        const sourceType = node.config?.sourceType || 'manual-import'
+        const configured = node.config?.productsJson
+        const simpleLines = node.config?.productLines
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
+
+        if (sourceType === 'research' && context.liveExecutors?.researchAffiliateProducts) {
+          const researched = await context.liveExecutors.researchAffiliateProducts({
+            theme,
+            maxCandidates: Number(node.config?.maxCandidates || 10),
+            includeAffiliateFields: node.config?.includeAffiliateFields !== false,
+          })
+
+          const products = researched.map((product, index) => ({
+            id: product.id || `researched-product-${index + 1}`,
+            title: product.title || `Untitled product ${index + 1}`,
+            category: product.category || 'uncategorized',
+            price: product.price ?? 0,
+            brand: product.brand || 'Unknown brand',
+            rating: product.rating ?? 0,
+            reviewCount: product.reviewCount ?? 0,
+            tags: Array.isArray(product.tags) ? product.tags : [],
+            canonicalUrl: product.canonicalUrl || product.url || '',
+            affiliateUrl: product.affiliateUrl || product.canonicalUrl || product.url || '',
+            imageUrl: product.imageUrl || '',
+            source: product.source || 'research',
+            confidence: product.confidence ?? 0.75,
+            rationale: product.rationale || '',
+          }))
+
+          return {
+            message: 'Product candidate source loaded live researched products',
+            output: {
+              source: 'research',
+              products,
+              count: products.length,
+              live: true,
+              placeholder: false,
+              fallback: false,
+            },
+          }
+        }
+
+        const parsedProducts = Array.isArray(configured)
+          ? configured
+          : typeof configured === 'string' && configured.trim()
+            ? JSON.parse(configured)
+            : null
+        const lineProducts = !parsedProducts && typeof simpleLines === 'string' && simpleLines.trim()
+          ? parseSimpleProductLines(simpleLines)
+          : null
+
+        const usingOperatorProducts = (Array.isArray(parsedProducts) && parsedProducts.length > 0) || (Array.isArray(lineProducts) && lineProducts.length > 0)
+        const products = (Array.isArray(parsedProducts) && parsedProducts.length > 0
+          ? parsedProducts
+          : Array.isArray(lineProducts) && lineProducts.length > 0
+            ? lineProducts
+            : getDefaultAffiliateProducts())
+          .slice(0, Number(node.config?.maxCandidates || 50))
+          .map((product, index) => ({
+            id: product.id || `product-${index + 1}`,
+            title: product.title || `Untitled product ${index + 1}`,
+            category: product.category || 'uncategorized',
+            price: product.price ?? 0,
+            brand: product.brand || 'Unknown brand',
+            rating: product.rating ?? 0,
+            reviewCount: product.reviewCount ?? 0,
+            tags: Array.isArray(product.tags) ? product.tags : [],
+            canonicalUrl: product.canonicalUrl || product.url || '',
+            affiliateUrl: product.affiliateUrl || product.canonicalUrl || product.url || '',
+            imageUrl: product.imageUrl || '',
+            source: product.source || (usingOperatorProducts ? 'operator' : 'fallback'),
+            confidence: product.confidence ?? (usingOperatorProducts ? 0.8 : 0.65),
+            rationale: product.rationale || '',
+          }))
+
+        return {
+          message: usingOperatorProducts
+            ? 'Product candidate source loaded operator-provided products'
+            : 'Product candidate source loaded a fallback affiliate product set',
+          output: {
+            source: sourceType,
+            products,
+            count: products.length,
+            live: false,
+            placeholder: false,
+            fallback: !usingOperatorProducts,
+          },
+        }
+      }
+
+      if (node.toolId === 'inputs.load_content_pack') {
+        return {
+          message: 'Load Content Pack is not wired to persistence yet',
+          output: {
+            contentPack: null,
+            blocked: true,
+            reason: 'content-pack-store-not-yet-implemented',
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'inputs.load_published_packs') {
+        return {
+          message: 'Load Published Content Packs is not wired to persistence yet',
+          output: {
+            contentPacks: [],
+            blocked: true,
+            reason: 'published-pack-store-not-yet-implemented',
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'inputs.fetch_channel_metrics') {
+        return {
+          message: 'Channel metrics fetch is not wired yet',
+          output: {
+            performanceRecords: [],
+            blocked: true,
+            reason: 'channel-metrics-not-yet-implemented',
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
       return {
         message: `Input placeholder completed: ${node.toolId ?? 'unknown-input'}`,
         output: {
@@ -438,6 +575,67 @@ export async function executeNode(node, context) {
         }
       }
 
+      if (node.toolId === 'ai.generate_content_pack') {
+        const selectedProducts = context.lastOutput?.selectedProducts || []
+        const alternateProducts = context.lastOutput?.alternateProducts || []
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
+        const contentPackDraft = buildContentPackFromProducts(theme, selectedProducts, alternateProducts)
+
+        return {
+          message: 'Generate Content Pack produced a review-ready affiliate draft package',
+          output: {
+            contentPackDraft,
+            live: false,
+            fallback: true,
+            placeholder: false,
+            nodeKind: 'affiliate_content_pack',
+          },
+        }
+      }
+
+      if (node.toolId === 'ai.generate_creative_briefs') {
+        const contentPackDraft = context.lastOutput?.contentPackDraft || {}
+        const assetCount = Number(node.config?.assetCount || 4)
+        const creativeAssets = Array.from({ length: assetCount }).map((_, index) => ({
+          id: `creative-${index + 1}-${slugify(contentPackDraft.title || 'affiliate-pack')}`,
+          type: 'brief',
+          title: `Creative direction ${index + 1}`,
+          overlayText: contentPackDraft.pinTitleVariants?.[index] || contentPackDraft.title || 'Practical Amazon Finds',
+          prompt: `Pinterest pin concept for ${contentPackDraft.title || 'a practical finds roundup'} in a bright, organized kitchen/pantry setting with clean readable text overlay.`,
+          status: 'draft',
+        }))
+
+        return {
+          message: 'Generate Creative Briefs produced Pinterest-first creative directions',
+          output: {
+            creativeAssets,
+            live: false,
+            fallback: true,
+            placeholder: false,
+            nodeKind: 'affiliate_creative_briefs',
+          },
+        }
+      }
+
+      if (node.toolId === 'ai.recommend_next_themes') {
+        return {
+          message: 'Recommend Next Themes produced fallback recommendations from current assumptions',
+          output: {
+            recommendedThemes: [
+              { title: 'Bathroom drawer organization finds that reduce clutter fast', angle: 'bathroom organization' },
+              { title: 'Entryway storage finds for busy families', angle: 'entryway organization' },
+              { title: 'Laundry room organization products worth buying', angle: 'laundry organization' },
+              { title: 'Small closet organization finds that actually help', angle: 'closet organization' },
+              { title: 'Kitchen cabinet organizers for small-space homes', angle: 'kitchen organization' },
+            ],
+            live: false,
+            fallback: true,
+            placeholder: false,
+          },
+        }
+      }
+
       return {
         message: `Tool placeholder completed: ${node.toolId ?? 'unknown-tool'}`,
         output: {
@@ -493,6 +691,193 @@ export async function executeNode(node, context) {
                 unavailable: Boolean(item.output?.unavailable),
                 summary: item.output?.summary || null,
               })),
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.select_theme') {
+        const theme = buildAffiliateTheme(node.config)
+        return {
+          message: 'Select Theme chose a practical home-organization roundup angle',
+          output: {
+            theme,
+            alternates: [
+              { title: 'Small kitchen cabinet organization finds that are actually useful' },
+              { title: 'Under-sink organizers that reduce clutter fast' },
+              { title: 'Pantry storage finds worth buying for busy families' },
+            ],
+            live: false,
+            fallback: true,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'data.normalize_records') {
+        const products = (context.lastOutput?.products || []).map((product) => ({
+          ...product,
+          normalizedTitle: String(product.title || '').trim(),
+          normalizedCategory: String(product.category || '').trim().toLowerCase(),
+          normalizedTags: Array.isArray(product.tags) ? product.tags.map((tag) => String(tag).trim().toLowerCase()) : [],
+        }))
+
+        return {
+          message: 'Normalize Records standardized product candidate fields',
+          output: {
+            products,
+            count: products.length,
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'data.dedupe_records') {
+        const seen = new Set()
+        const products = []
+        const clusters = []
+
+        for (const product of context.lastOutput?.products || []) {
+          const dedupeKey = slugify(`${product.normalizedTitle || product.title}-${product.brand || ''}`)
+          const existing = clusters.find((cluster) => cluster.key === dedupeKey)
+          if (existing) {
+            existing.productIds.push(product.id)
+            continue
+          }
+          clusters.push({ key: dedupeKey, productIds: [product.id] })
+          if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey)
+            products.push({ ...product, dedupeKey })
+          }
+        }
+
+        return {
+          message: 'Dedupe Records removed duplicate candidate variants',
+          output: {
+            products,
+            clusters,
+            count: products.length,
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.filter_approved_candidates') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const candidateProducts = incoming.find((item) => Array.isArray(item.output?.products))?.output?.products || []
+        const decision = incoming.find((item) => item.output?.decision)?.output?.decision || {}
+        const reviewItems = Array.isArray(decision.reviewedProducts) ? decision.reviewedProducts : []
+        const approvedIds = new Set(reviewItems.filter((item) => item.decision === 'approved').map((item) => item.productId))
+        const rejectedIds = new Set(reviewItems.filter((item) => item.decision === 'rejected').map((item) => item.productId))
+        const minApprovedCount = Number(node.config?.minApprovedCount || 0)
+        const hasExplicitReview = reviewItems.length > 0
+
+        let approvedProducts = hasExplicitReview
+          ? candidateProducts.filter((product) => approvedIds.has(product.id))
+          : candidateProducts.filter((product) => !rejectedIds.has(product.id))
+        if (approvedProducts.length < minApprovedCount && node.config?.fallbackMode === 'top-reviewed') {
+          approvedProducts = [...candidateProducts]
+            .sort((a, b) => (Number(b.reviewCount || 0) - Number(a.reviewCount || 0)))
+            .slice(0, Math.max(minApprovedCount, approvedProducts.length || 0))
+            .map((product) => ({ ...product, approvalFallback: true }))
+        }
+
+        const rejectedProducts = candidateProducts.filter((product) => rejectedIds.has(product.id))
+
+        return {
+          message: approvedProducts.length > 0
+            ? 'Filter Approved Candidates kept the approved products for scoring'
+            : 'Filter Approved Candidates found no approved products',
+          output: {
+            approvedProducts,
+            rejectedProducts,
+            products: approvedProducts,
+            decision,
+            live: false,
+            placeholder: false,
+            blocked: approvedProducts.length === 0,
+            reason: approvedProducts.length === 0 ? 'no-approved-products' : null,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.score_products') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
+        const inputProducts = incoming.find((item) => Array.isArray(item.output?.approvedProducts))?.output?.approvedProducts
+          || incoming.find((item) => Array.isArray(item.output?.products))?.output?.products
+          || []
+        const scoredProducts = inputProducts
+          .map((product) => scoreProductCandidate(product, theme))
+          .sort((a, b) => (b.scores?.totalScore || 0) - (a.scores?.totalScore || 0))
+          .slice(0, Number(node.config?.topK || 20))
+
+        return {
+          message: 'Score Products ranked candidates for the selected affiliate theme',
+          output: {
+            theme,
+            scoredProducts,
+            count: scoredProducts.length,
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.select_roundup_set') {
+        const scoredProducts = context.lastOutput?.scoredProducts || []
+        const targetCount = Number(node.config?.targetCount || 10)
+        const alternateCount = Number(node.config?.alternateCount || 4)
+        const selectedProducts = scoredProducts.slice(0, targetCount)
+        const alternateProducts = scoredProducts.slice(targetCount, targetCount + alternateCount)
+
+        return {
+          message: 'Select Roundup Set chose final products and alternates',
+          output: {
+            selectedProducts,
+            alternateProducts,
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'logic.review_performance') {
+        return {
+          message: 'Review Performance returned a placeholder learning summary',
+          output: {
+            performanceSummary: {
+              winnerThemes: [],
+              notes: 'Performance review is scaffolded but not connected to persisted publish data yet.',
+            },
+            live: false,
+            placeholder: false,
+            blocked: true,
+          },
+        }
+      }
+
+      if (node.toolId === 'data.assemble_content_pack') {
+        const contentPackDraft = context.lastOutput?.contentPackDraft || {}
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const selectedProducts = incoming.find((item) => item.from === 'select-roundup-set')?.output?.selectedProducts || []
+        const alternateProducts = incoming.find((item) => item.from === 'select-roundup-set')?.output?.alternateProducts || []
+        const creativeAssets = incoming.find((item) => item.from === 'generate-creative-briefs')?.output?.creativeAssets || []
+
+        return {
+          message: 'Assemble Content Pack created a review-ready affiliate artifact',
+          output: {
+            contentPack: {
+              ...contentPackDraft,
+              status: node.config?.initialStatus || 'review',
+              selectedProducts,
+              alternateProducts,
+              creativeAssets,
+              reviewReady: true,
             },
             live: false,
             placeholder: false,
@@ -607,12 +992,85 @@ export async function executeNode(node, context) {
         }
       }
 
+      if (node.toolId === 'logic.approval_branch') {
+        const decision = context.lastOutput?.decision || {}
+        const approved = decision.decision === 'approved'
+        return {
+          message: 'Approval Branch evaluated the review decision',
+          output: {
+            approved,
+            route: approved ? (node.config?.approvedRoute || 'schedule') : (node.config?.reworkRoute || 'return'),
+            decision,
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
       return {
         message: `Branch node completed: ${node.toolId ?? 'unknown-branch'}`,
         output: {
           toolId: node.toolId,
           status: 'ok',
           placeholder: false,
+        },
+      }
+    }
+    case 'approval': {
+      if (node.toolId === 'approval.review_candidates') {
+        const incoming = collectIncomingOutputs(context.state, context.workflow, node.id)
+        const theme = incoming.find((item) => item.from === 'select-theme')?.output?.theme || buildAffiliateTheme(node.config)
+        const products = incoming.find((item) => Array.isArray(item.output?.products))?.output?.products || []
+        const minApprovedCount = Number(node.config?.minApprovedCount || 0)
+        const defaultDecision = node.config?.defaultDecision || 'approved'
+        const reviewedProducts = products.map((product, index) => ({
+          productId: product.id,
+          title: product.title,
+          decision: index < Math.max(minApprovedCount, Math.min(products.length, 10)) ? 'approved' : defaultDecision,
+          rationale: (index < Math.max(minApprovedCount, Math.min(products.length, 10)) || defaultDecision === 'approved')
+            ? 'Kept as a strong candidate for the roundup.'
+            : 'Rejected before scoring.',
+        }))
+
+        return {
+          message: 'Review Candidates created a structured approval set before scoring',
+          output: {
+            decision: {
+              decision: 'approved',
+              theme,
+              reviewedProducts,
+              approvedCount: reviewedProducts.filter((item) => item.decision === 'approved').length,
+              rejectedCount: reviewedProducts.filter((item) => item.decision === 'rejected').length,
+              reviewMode: 'pre-score-candidate-gate',
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'approval.review_content_pack') {
+        const contentPack = context.lastOutput?.contentPack || null
+        return {
+          message: 'Review Content Pack created a placeholder human review decision',
+          output: {
+            decision: {
+              decision: 'approved',
+              contentPackId: contentPack?.id || null,
+              notes: 'Fallback approval placeholder until interactive review is wired.',
+            },
+            live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      return {
+        message: `Approval node completed: ${node.toolId ?? 'unknown-approval'}`,
+        output: {
+          approved: false,
+          live: false,
+          placeholder: true,
         },
       }
     }
@@ -671,15 +1129,39 @@ export async function executeNode(node, context) {
       if (node.toolId === 'outputs.return_result') {
         const prior = context.lastOutput || {}
         const runRecord = prior.runRecord || prior
+        const contentPack = prior.contentPack || prior.contentPackDraft || null
         return {
           message: 'Return Result prepared the final in-app workflow summary',
           output: {
             resultSummary: {
-              status: runRecord.delivered ? 'delivered' : 'ready',
+              status: contentPack?.reviewReady ? 'review-ready' : (runRecord.delivered ? 'delivered' : 'ready'),
               runRecord,
-              nextAction: runRecord.recommendedNextAction || null,
+              contentPack,
+              nextAction: contentPack?.reviewReady
+                ? 'Review the generated affiliate content pack, edit if needed, and prepare Pinterest publishing.'
+                : (runRecord.recommendedNextAction || null),
             },
             live: false,
+            placeholder: false,
+          },
+        }
+      }
+
+      if (node.toolId === 'outputs.create_publish_job') {
+        const payload = context.lastOutput?.contentPack ? context.lastOutput : { contentPack: null }
+        return {
+          message: 'Create Publish Job is scaffolded but not wired to a live publishing destination yet',
+          output: {
+            publishJob: {
+              channel: node.config?.channel || 'pinterest',
+              board: node.config?.board || null,
+              mode: node.config?.mode || 'export-or-direct',
+              status: 'draft',
+              contentPackId: payload.contentPack?.id || null,
+            },
+            live: false,
+            blocked: true,
+            reason: 'publish-job-not-yet-implemented',
             placeholder: false,
           },
         }

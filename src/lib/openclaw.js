@@ -82,3 +82,19 @@ export async function saveFileToGoogleDrive(file) {
 
   return payload.file
 }
+
+export async function researchAffiliateProducts(params = {}) {
+  const payload = await fetchJson(`${resolveBridgeUrl()}/api/research-affiliate-products`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params || {}),
+  })
+
+  if (!Array.isArray(payload.products)) {
+    throw new Error('Affiliate research response was incomplete.')
+  }
+
+  return payload.products
+}

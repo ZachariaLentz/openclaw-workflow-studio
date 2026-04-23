@@ -209,6 +209,126 @@ select {
   min-height: 360px;
 }
 
+.affiliate-pack-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.affiliate-preview-card {
+  display: grid;
+  gap: 14px;
+}
+
+.affiliate-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.affiliate-pack-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.affiliate-pack-section ul {
+  margin: 0;
+  padding: 12px 12px 12px 28px;
+  line-height: 1.45;
+  background: rgba(11, 19, 40, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(133, 154, 203, 0.12);
+  color: #dbe5fb;
+}
+
+.affiliate-pack-section pre {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  background: rgba(11, 19, 40, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(133, 154, 203, 0.16);
+  padding: 12px;
+  color: #dbe5fb;
+}
+
+.affiliate-pack-section li {
+  margin-bottom: 6px;
+}
+
+.affiliate-pack-section li:last-child {
+  margin-bottom: 0;
+}
+
+.affiliate-pack-section li::marker {
+  color: #7ea3ff;
+}
+
+.affiliate-preview-card .section-title {
+  margin-bottom: 4px;
+}
+
+.affiliate-preview-card .section-title:first-child {
+  margin-bottom: 8px;
+}
+
+.affiliate-pack-section .section-title {
+  font-size: 0.95rem;
+}
+
+.affiliate-preview-card .muted.small-copy {
+  margin-bottom: 2px;
+}
+
+.affiliate-pack-section + .affiliate-pack-section {
+  padding-top: 4px;
+  border-top: 1px solid rgba(123, 145, 194, 0.12);
+}
+
+.affiliate-preview-grid > div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(10, 16, 31, 0.45);
+  border: 1px solid rgba(123, 145, 194, 0.12);
+}
+
+.affiliate-preview-grid strong {
+  font-size: 1rem;
+}
+
+.affiliate-candidate-list {
+  display: grid;
+  gap: 12px;
+}
+
+.affiliate-candidate-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(11, 19, 40, 0.6);
+  border: 1px solid rgba(133, 154, 203, 0.12);
+}
+
+.affiliate-link-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.affiliate-link-grid a {
+  color: #aecdff;
+  word-break: break-all;
+}
+
+.affiliate-pack-preview .run-result-card {
+  margin-bottom: 0;
+}
+
+.affiliate-pack-preview .success-surface {
+  background: linear-gradient(180deg, rgba(24, 55, 42, 0.95), rgba(19, 28, 50, 0.92));
+}
+
 .hero-phone-card,
 .workflow-phone-card,
 .node-info-card,

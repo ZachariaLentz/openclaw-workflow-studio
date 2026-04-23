@@ -5,6 +5,16 @@ function isFieldVisible(field, config) {
   return config?.[field.visibleWhen.key] === field.visibleWhen.equals
 }
 
+function getFieldHelpText(node, field) {
+  if (node.toolId === 'sources.product_candidates' && field.key === 'productLines') {
+    return 'Quick Paste format: Title | Price | Category | tag1, tag2 | Brand'
+  }
+  if (node.toolId === 'sources.product_candidates' && field.key === 'productsJson') {
+    return 'Products JSON format: [{ "title": "...", "price": 24.99, "category": "...", "tags": ["..."], "brand": "..." }]'
+  }
+  return field.helpText || ''
+}
+
 export function NodeConfigFields({ node, fields = [], accounts = [], onPatchNode }) {
   const config = node.config || {}
 
@@ -54,6 +64,7 @@ export function NodeConfigFields({ node, fields = [], accounts = [], onPatchNode
         }
 
         if (field.type === 'schema') {
+          const helpText = getFieldHelpText(node, field)
           return (
             <label key={field.key} className="field-label">
               {field.label}
@@ -71,6 +82,7 @@ export function NodeConfigFields({ node, fields = [], accounts = [], onPatchNode
                 }}
                 spellCheck="false"
               />
+              {helpText ? <span className="muted small-copy">{helpText}</span> : null}
             </label>
           )
         }
