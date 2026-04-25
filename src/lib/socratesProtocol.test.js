@@ -30,8 +30,62 @@ describe('applySocratesChange', () => {
     })
 
     expect(next.name).toBe('Story Workflow Revised')
-    expect(next.nodes.some((node) => node.id === 'review-story')).toBe(true)
+    expect(next.nodes.some((node) => node.id === 'review-story' && node.toolId === 'ai.prompt' && node.type === 'tool')).toBe(true)
     expect(next.edges.some((edge) => edge.id === 's6')).toBe(true)
+    expect(next.tools.some((tool) => tool.id === 'ai.prompt')).toBe(true)
+  })
+
+  it('normalizes a manual trigger patch through the registry', () => {
+    const workflow = structuredClone(sampleWorkflows[0])
+    const next = applySocratesChange(workflow, {
+      type: 'patch_workflow',
+      operations: [
+        {
+          op: 'upsert_node',
+          node: {
+            id: 'new-start',
+            type: 'trigger',
+            label: 'New Start',
+            config: {
+              triggerMode: 'manual',
+            },
+            position: { x: 0, y: 1 },
+          },
+        },
+      ],
+    })
+
+    expect(next.nodes.find((node) => node.id === 'new-start')).toMatchObject({
+      toolId: 'trigger.manual',
+      type: 'trigger',
+      config: expect.objectContaining({
+        triggerMode: 'manual',
+        triggerLabel: 'Start workflow',
+      }),
+    })
+  })
+
+  it('rejects scaffold nodes in reusable authoring patches', () => {
+    const workflow = structuredClone(sampleWorkflows[0])
+
+    expect(() => applySocratesChange(workflow, {
+      type: 'patch_workflow',
+      operations: [
+        {
+          op: 'upsert_node',
+          node: {
+            id: 'send-result',
+            type: 'output',
+            label: 'Send Result',
+            toolId: 'outputs.send_message',
+            config: {
+              destination: 'telegram:test',
+            },
+            position: { x: 6, y: 1 },
+          },
+        },
+      ],
+    })).toThrow(/not available for reusable workflow authoring/i)
   })
 
   it('replaces the full workflow when Socrates returns a draft', () => {

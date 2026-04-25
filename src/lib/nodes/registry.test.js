@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createNodeFromRegistry } from './createNode'
 import { executeNode } from '../runtime/executors'
-import { getDefaultNodeConfig, getNodeDefinition, getNodeEditorFields, getNodeExecutor } from './registry'
+import { getAuthorableNodeDefinition, getDefaultNodeConfig, getNodeDefinition, getNodeEditorFields, getNodeExecutor, listAuthorableNodeDefinitions, listNodeOrganizerSummaries } from './registry'
 
 describe('node registry', () => {
   it('returns a definition for schedule trigger', () => {
@@ -12,6 +12,15 @@ describe('node registry', () => {
       nodeType: 'trigger',
       title: 'Schedule Trigger',
     })
+  })
+
+  it('includes manual trigger in the registry and authorable set', () => {
+    expect(getNodeDefinition('trigger.manual')).toMatchObject({
+      toolId: 'trigger.manual',
+      nodeType: 'trigger',
+    })
+    expect(getAuthorableNodeDefinition('trigger.manual')).not.toBeNull()
+    expect(listAuthorableNodeDefinitions().some((definition) => definition.toolId === 'trigger.manual')).toBe(true)
   })
 
   it('returns cloned default config', () => {
@@ -48,5 +57,20 @@ describe('node registry', () => {
 
   it('exposes an executor for registered nodes', () => {
     expect(getNodeExecutor('outputs.return_result')).toBe(executeNode)
+  })
+
+  it('lists organizer summaries with authoring state', () => {
+    const summaries = listNodeOrganizerSummaries()
+    const manualTrigger = summaries.find((item) => item.toolId === 'trigger.manual')
+    const sendMessage = summaries.find((item) => item.toolId === 'outputs.send_message')
+
+    expect(manualTrigger).toMatchObject({
+      toolId: 'trigger.manual',
+      authoring: expect.objectContaining({ allowed: true }),
+    })
+    expect(sendMessage).toMatchObject({
+      toolId: 'outputs.send_message',
+      authoring: expect.objectContaining({ allowed: false }),
+    })
   })
 })

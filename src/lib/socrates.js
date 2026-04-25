@@ -1,4 +1,6 @@
 import { resolveBridgeUrl } from './bridge'
+import { buildClarificationPlan } from './nodes/clarificationPolicy'
+import { listAuthorableNodeDefinitions } from './nodes/registry'
 
 function parseSocratesPayload(payload) {
   if (!payload?.ok) {
@@ -86,6 +88,11 @@ function buildWorkflowContext(workflow, options = {}) {
 
 export function buildSocratesPrompt(userMessage, workflow, options = {}) {
   const context = buildWorkflowContext(workflow, options)
+  const authorableNodes = listAuthorableNodeDefinitions().map((definition) => ({
+    toolId: definition.toolId,
+    title: definition.title,
+    nodeType: definition.nodeType,
+  }))
 
   return [
     'You are editing the currently active workflow in OpenClaw Workflow Studio.',
@@ -94,9 +101,16 @@ export function buildSocratesPrompt(userMessage, workflow, options = {}) {
     'Prefer small deterministic patches when possible. Preserve workflow id unless the user explicitly asks to replace the whole workflow.',
     'When editing an existing saved workflow, keep the workflow grounded in its current purpose. When shaping a new draft, turn it into a coherent workflow instead of returning abstract guidance.',
     'Return only concrete authoring intent for this active workflow.',
+    'Prefer composing workflows from existing organizer-approved reusable nodes before creating a new node.',
+    'Only propose a new reusable node when the workflow cannot be represented honestly with the current allowed catalog.',
+    'Only propose a new node archetype/type when an existing archetype would distort the requested behavior.',
+    'Only use supported reusable node toolIds from the allowed catalog below. Do not invent toolIds, config keys, or bespoke node types.',
     '',
     'ACTIVE WORKFLOW CONTEXT',
     JSON.stringify(context, null, 2),
+    '',
+    'ALLOWED AUTHORABLE NODES',
+    JSON.stringify(authorableNodes, null, 2),
     '',
     'CURRENT WORKFLOW JSON',
     JSON.stringify(workflow, null, 2),
@@ -113,6 +127,7 @@ export function buildSocratesRequest(message, workflow, options = {}) {
     message: buildSocratesPrompt(message, workflow, options),
     workflow,
     workflowContext: buildWorkflowContext(workflow, options),
+    nodeClarificationPlan: buildClarificationPlan(message),
   }
 }
 

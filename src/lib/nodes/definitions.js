@@ -62,12 +62,47 @@ const returnResultConfigSchema = z.object({
 
 const simpleOptionalTextConfigSchema = z.object({}).passthrough()
 
+const weightedCriterionSchema = z.object({
+  field: z.string().min(1),
+  weight: z.number(),
+  direction: z.enum(['asc', 'desc']),
+})
+
+const scoreProductsConfigSchema = z.object({
+  topK: z.number().int().positive().optional(),
+  scoringMethod: z.string().min(1).optional(),
+  normalization: z.string().optional(),
+  missingData: z.string().optional(),
+  explainability: z.string().optional(),
+  criteria: z.array(weightedCriterionSchema).min(1),
+})
+
 const approvalConfigSchema = z.object({
   allowedDecisions: z.array(z.string()).optional(),
   editableFields: z.array(z.string()).optional(),
 })
 
 export const nodeDefinitions = {
+  'trigger.manual': {
+    toolId: 'trigger.manual',
+    title: 'Manual Trigger',
+    description: 'Start a workflow from an explicit user action in the app.',
+    nodeType: 'trigger',
+    toolKind: 'local-cli',
+    defaultLabel: 'Manual Trigger',
+    defaultConfig: {
+      triggerMode: 'manual',
+      triggerLabel: 'Start workflow',
+      initiator: 'user',
+    },
+    configSchema: simpleOptionalTextConfigSchema,
+    editorFields: [
+      { key: 'triggerLabel', label: 'Trigger Label', type: 'text', required: true },
+    ],
+    organizer: { ready: true, visibility: 'live', reason: 'Core manual workflow primitive' },
+    maturity: 'fallback-only',
+    executor: executeNode,
+  },
   'trigger.schedule': {
     toolId: 'trigger.schedule',
     title: 'Schedule Trigger',
@@ -428,19 +463,39 @@ export const nodeDefinitions = {
   'logic.score_products': {
     toolId: 'logic.score_products',
     title: 'Score Products',
-    description: 'Apply weighted scoring across candidate products.',
+    description: 'Apply weighted scoring to candidate records and return a ranked result.',
     nodeType: 'transform',
     toolKind: 'logic',
     defaultLabel: 'Score Products',
-    defaultConfig: { weightsProfile: 'default', topK: 20 },
-    configSchema: simpleOptionalTextConfigSchema,
+    defaultConfig: {
+      topK: 20,
+      scoringMethod: 'weighted-ranking',
+      normalization: 'min_max',
+      missingData: 'penalize_with_warning',
+      explainability: 'summary_breakdown',
+      criteria: [
+        { field: 'margin', weight: 0.4, direction: 'desc' },
+        { field: 'rating', weight: 0.35, direction: 'desc' },
+        { field: 'price', weight: 0.25, direction: 'asc' },
+      ],
+    },
+    inputSchema: {
+      products: 'array<object>',
+    },
+    outputSchema: {
+      scoredProducts: 'array<object>',
+      count: 'number',
+    },
+    configSchema: scoreProductsConfigSchema,
     editorFields: [
-      { key: 'weightsProfile', label: 'Weights Profile', type: 'text' },
       { key: 'topK', label: 'Top K', type: 'text' },
-      { key: 'minimumScore', label: 'Minimum Score', type: 'text' },
+      { key: 'criteria', label: 'Criteria', type: 'schema', required: true },
+      { key: 'normalization', label: 'Normalization', type: 'text' },
+      { key: 'missingData', label: 'Missing Data', type: 'text' },
+      { key: 'explainability', label: 'Explainability', type: 'text' },
     ],
-    organizer: { ready: true, visibility: 'design-target', reason: 'Flagship affiliate workflow primitive' },
-    maturity: 'scaffold',
+    organizer: { ready: true, visibility: 'live', reason: 'First proof scoring node for organizer-driven creation' },
+    maturity: 'fallback-only',
     executor: executeNode,
   },
   'logic.select_roundup_set': {

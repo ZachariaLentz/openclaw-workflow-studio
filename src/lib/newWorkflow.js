@@ -21,6 +21,7 @@ export function createBlankWorkflow() {
         type: 'trigger',
         label: 'Start',
         description: 'Manual trigger for the workflow.',
+        toolId: 'trigger.manual',
         config: {
           triggerMode: 'manual',
           triggerLabel: 'Start workflow',

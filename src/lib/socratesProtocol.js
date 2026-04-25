@@ -1,4 +1,6 @@
 import { workflowDefinitionSchema } from './schema'
+import { normalizeNodeForAuthoring } from './nodes/createNode'
+import { buildToolRefFromDefinition } from './nodes/registry'
 
 function cloneValue(value) {
   return structuredClone(value)
@@ -69,6 +71,17 @@ function upsertById(items, value) {
   return nextItems
 }
 
+function upsertToolForNode(workflow, node) {
+  if (!node?.toolId) return workflow
+  const tool = buildToolRefFromDefinition(node.toolId)
+  if (!tool) return workflow
+
+  return {
+    ...workflow,
+    tools: upsertById(workflow.tools || [], tool),
+  }
+}
+
 function removeByKey(items, key, value) {
   return items.filter((item) => item[key] !== value)
 }
@@ -111,11 +124,16 @@ export function applySocratesChange(workflow, rawChange) {
         nextWorkflow = removeAtPath(nextWorkflow, operation.path)
         break
       case 'upsert_node':
+        {
+          const existingNode = (nextWorkflow.nodes || []).find((item) => item.id === operation.node?.id) || null
+          const normalizedNode = normalizeNodeForAuthoring(operation.node || {}, { existingNode })
         nextWorkflow = {
           ...nextWorkflow,
-          nodes: upsertById(nextWorkflow.nodes || [], operation.node),
+          nodes: upsertById(nextWorkflow.nodes || [], normalizedNode),
         }
+        nextWorkflow = upsertToolForNode(nextWorkflow, normalizedNode)
         break
+        }
       case 'remove_node':
         nextWorkflow = {
           ...nextWorkflow,
