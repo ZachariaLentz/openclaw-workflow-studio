@@ -1,9 +1,11 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { BottomSheet } from './components/BottomSheet'
+import { AppShell } from './components/AppShell'
+import { FloatingSocratesChat } from './components/FloatingSocratesChat'
 import { NodeConfigFields } from './components/NodeConfigFields'
+import { ResearchNodeOrganizerPage } from './components/ResearchNodeOrganizerPage'
 import { RunPanel } from './components/RunPanel'
-import NodeOrganizerScreen from './components/NodeOrganizerScreen'
 import { WorkflowLibraryScreen } from './components/WorkflowLibraryScreen'
 import { WorkspaceHeader } from './components/WorkspaceHeader'
 import { WorkspaceTabBar } from './components/WorkspaceTabBar'
@@ -475,64 +477,6 @@ function WorkspaceNodeScreen({ workflow, selectedNode, selectedTool, selectedNod
   )
 }
 
-function WorkspaceSocratesScreen({ connection, socratesMessages, socratesDraft, onSocratesDraftChange, onSendToSocrates, sendingToSocrates, chatNodeCreationState }) {
-  const suggestionPrompts = [
-    'Add error handling and a fallback branch.',
-    'Rename the workflow and tighten every node label.',
-    'Insert a review step before the final output.',
-    'Turn this into a reusable template for another app.',
-  ]
-
-  return (
-    <div className="workspace-screen-stack">
-      <div className="panel workspace-section-intro quiet-surface">
-        <div className="section-title">Socrates</div>
-      </div>
-
-      <div className="panel">
-        <div className="socrates-panel workspace-socrates-panel">
-          <div className="socrates-suggestion-row">
-            {suggestionPrompts.map((prompt) => (
-              <button key={prompt} className="secondary-button suggestion-chip" onClick={() => onSocratesDraftChange(prompt)}>{prompt}</button>
-            ))}
-          </div>
-          <div className="chat-log">
-            {socratesMessages.length === 0 ? <div className="muted">No messages yet.</div> : null}
-            {socratesMessages.map((item, index) => <div key={`${item.role}-${index}`} className={`chat-bubble ${item.role}`}><strong>{item.role === 'user' ? 'You' : 'Socrates'}</strong><div>{item.text}</div></div>)}
-          </div>
-          {chatNodeCreationState?.intent ? (
-            <div className="node-info-card">
-              <div className="section-title">Node creation assistant</div>
-              {chatNodeCreationState.mode === 'clarifying' ? (
-                <div className="stack-sm">
-                  <div className="muted small-copy">Socrates thinks this request needs clarification before a reusable node can be drafted.</div>
-                  <ul>
-                    {(chatNodeCreationState.clarificationPlan?.requiredQuestions || []).map((item) => (
-                      <li key={item.id}>
-                        <strong>{item.question}</strong>
-                        <div className="muted small-copy">{item.reason}</div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {chatNodeCreationState.mode === 'draft_ready' ? (
-                <div className="stack-sm">
-                  <div className="muted small-copy">Draft node is ready for review.</div>
-                  <pre>{JSON.stringify(chatNodeCreationState.draftResult?.draft?.node || {}, null, 2)}</pre>
-                  {chatNodeCreationState.score ? <div className="muted small-copy">Score: {chatNodeCreationState.score.score} ({chatNodeCreationState.score.grade})</div> : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <textarea className="chat-input" value={socratesDraft} onChange={(event) => onSocratesDraftChange(event.target.value)} placeholder="Ask Socrates…" spellCheck="false" />
-          <div className="row-between workspace-footer-row"><span className="muted small-copy">{connection.connected ? 'Bridge connected' : 'Bridge required'}</span><button className="primary-button" disabled={sendingToSocrates || !connection.connected || !socratesDraft.trim()} onClick={onSendToSocrates}>{sendingToSocrates ? 'Sending…' : 'Send'}</button></div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function EventTimeline({ events = [] }) {
   const recentEvents = [...events].slice(-8).reverse()
   if (recentEvents.length === 0) return <div className="muted small-copy">No events yet.</div>
@@ -587,13 +531,10 @@ function App() {
   const [selectedNodeId, setSelectedNodeId] = useState('')
   const [runState, setRunState] = useState(null)
   const [running, setRunning] = useState(false)
-  const [activeView, setActiveView] = useState('library')
+  const [activePage, setActivePage] = useState('workflows')
   const [workspaceTab, setWorkspaceTab] = useState('canvas')
   const [connection, setConnection] = useState({ connected: false, bridgeUrl: 'http://127.0.0.1:4318', providers: [], accounts: [] })
   const [refreshingConnection, setRefreshingConnection] = useState(false)
-  const [socratesMessages, setSocratesMessages] = useState([])
-  const [socratesDraft, setSocratesDraft] = useState('')
-  const [sendingToSocrates, setSendingToSocrates] = useState(false)
   const [jsonPanelOpen, setJsonPanelOpen] = useState(false)
   const [nodeSheetOpen, setNodeSheetOpen] = useState(false)
   const [oauthStatus, setOauthStatus] = useState(null)
@@ -606,6 +547,13 @@ function App() {
   const [lastRouteByWorkflow, setLastRouteByWorkflow] = useState({})
   const [runningSchedule, setRunningSchedule] = useState(false)
   const [organizerSelectedToolId, setOrganizerSelectedToolId] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [pageChatState, setPageChatState] = useState({
+    workflows: { messages: [], draft: '', sending: false },
+    organizer: { messages: [], draft: '', sending: false },
+    settings: { messages: [], draft: '', sending: false },
+  })
   const workflowsRef = useRef(workflows)
   const deferredQuery = useDeferredValue(libraryQuery)
 
@@ -645,22 +593,19 @@ function App() {
     [workflows, deferredQuery, librarySort],
   )
   const organizerSummaries = useMemo(() => listNodeOrganizerSummaries(), [])
-  const clarificationPreview = useMemo(() => buildClarificationPlan(socratesDraft), [socratesDraft])
-  const organizerNodeDraft = useMemo(() => buildNodeDraftFromRequest(socratesDraft, {
+  const clarificationPreview = useMemo(() => buildClarificationPlan(organizerChatDraft), [organizerChatDraft])
+  const organizerNodeDraft = useMemo(() => buildNodeDraftFromRequest(organizerChatDraft, {
     criteria: [
       { field: 'margin', weight: 0.4, direction: 'desc' },
       { field: 'rating', weight: 0.35, direction: 'desc' },
       { field: 'price', weight: 0.25, direction: 'asc' },
     ],
     topK: 12,
-  }), [socratesDraft])
-  const chatNodeCreationState = useMemo(() => buildChatNodeCreationState(socratesDraft, {
-    criteria: [
-      { field: 'margin', weight: 0.4, direction: 'desc' },
-      { field: 'rating', weight: 0.35, direction: 'desc' },
-      { field: 'price', weight: 0.25, direction: 'asc' },
-    ],
-  }), [socratesDraft])
+  }), [organizerChatDraft])
+  const workflowsChatDraft = pageChatState.workflows?.draft || ''
+  const organizerChatDraft = pageChatState.organizer?.draft || ''
+  const chatNodeCreationState = useMemo(() => buildChatNodeCreationState(workflowsChatDraft, {}, workflowsChatDraft), [workflowsChatDraft])
+  const organizerChatNodeCreationState = useMemo(() => buildChatNodeCreationState(organizerChatDraft, {}, organizerChatDraft), [organizerChatDraft])
 
   useEffect(() => {
     if (parsedWorkflow?.nodes?.length && !parsedWorkflow.nodes.some((node) => node.id === selectedNodeId)) setSelectedNodeId('')
@@ -676,13 +621,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!parsedWorkflow || !validation.ok || activeView !== 'canvas') return undefined
+    if (!parsedWorkflow || !validation.ok || activePage !== 'workflows') return undefined
     const timeoutId = window.setTimeout(() => {
       persistWorkflow(parsedWorkflow, { syncText: false })
     }, 250)
     return () => window.clearTimeout(timeoutId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedWorkflow, validation.ok, activeView])
+  }, [parsedWorkflow, validation.ok, activePage])
 
   function getWorkflowFromLibrary(workflowId, source = workflowsRef.current) {
     return source.find((workflow) => workflow.id === workflowId) || source[0] || null
@@ -747,7 +692,7 @@ function App() {
     setJsonPanelOpen(false)
     resetCanvasState(setZoom, setPan)
     setWorkspaceTab(lastRouteByWorkflow[workflow.id] || 'canvas')
-    setActiveView('canvas')
+    setActivePage('workflows')
   }
 
   function handleNewWorkflow() {
@@ -757,11 +702,14 @@ function App() {
     setWorkflowText(JSON.stringify(savedWorkflow, null, 2))
     setSelectedNodeId('')
     setRunState(null)
-    setSocratesMessages([{ role: 'assistant', text: 'New workflow created.' }])
+    setPageChatState((current) => ({
+      ...current,
+      workflows: { ...(current.workflows || { messages: [], draft: '', sending: false }), messages: [{ role: 'assistant', text: 'New workflow created.' }], draft: '', sending: false },
+    }))
     setJsonPanelOpen(false)
     resetCanvasState(setZoom, setPan)
-    goToWorkspaceTab('socrates')
-    setActiveView('canvas')
+    goToWorkspaceTab('canvas')
+    setActivePage('workflows')
   }
 
   function handleSelectNode(nodeId) {
@@ -895,7 +843,7 @@ function App() {
   }
 
   async function handleSendToSocrates() {
-    const text = socratesDraft.trim()
+    const text = currentPageChat.draft.trim()
     if (!text || !parsedWorkflow) return
     setSendingToSocrates(true)
     setSocratesMessages((current) => [...current, { role: 'user', text }])
@@ -969,39 +917,80 @@ function App() {
     await refreshConnection()
   }
 
+    const menuItems = [
+    { id: 'workflows', label: 'Workflows', description: 'Build and operate workflows.' },
+    { id: 'organizer', label: 'Node Organizer', description: 'Research node hierarchy, archetypes, and reusable node design.' },
+    { id: 'settings', label: 'Settings', description: 'Bridge, accounts, and environment.' },
+  ]
+  const currentPageChat = pageChatState[activePage] || { messages: [], draft: '', sending: false }
+  const currentChatNodeCreationState = activePage === 'workflows'
+    ? chatNodeCreationState
+    : activePage === 'organizer'
+      ? organizerChatNodeCreationState
+      : null
+
   return (
-    <div className="app-shell phone-app-shell">
-      {activeView === 'library' ? (
-        <WorkflowLibraryScreen
-          libraryView={libraryView}
-          activeWorkflowId={activeWorkflowId}
-          onOpenWorkflow={loadWorkflow}
-          onNewWorkflow={handleNewWorkflow}
-          query={libraryQuery}
-          onQueryChange={setLibraryQuery}
-          sort={librarySort}
-          onSortChange={setLibrarySort}
+    <AppShell
+      title={activePage === 'workflows' ? (activeWorkflowId ? (parsedWorkflow?.name || 'Workflow') : 'Workflows') : activePage === 'organizer' ? 'Node Organizer' : 'Settings'}
+      subtitle={activePage === 'workflows' ? (activeWorkflowId ? (parsedWorkflow?.appId || 'workflow workspace') : 'Workflow library and runtime surfaces') : activePage === 'organizer' ? 'Research and design for reusable nodes' : 'Bridge and environment controls'}
+      menuOpen={menuOpen}
+      onToggleMenu={() => setMenuOpen((current) => !current)}
+      menuItems={menuItems}
+      activePage={activePage}
+      onSelectPage={(page) => { setActivePage(page); setMenuOpen(false) }}
+      chatBubble={(
+        <FloatingSocratesChat
+          open={chatOpen}
+          onToggle={() => setChatOpen((current) => !current)}
+          pageTitle={activePage === 'workflows' ? 'Workflows' : activePage === 'organizer' ? 'Node Organizer' : 'Settings'}
+          pageContextLabel={activePage === 'workflows' && activeWorkflowId ? (parsedWorkflow?.name || '') : ''}
+          connection={connection}
+          draft={currentPageChat.draft}
+          onDraftChange={(value) => setPageChatState((current) => ({ ...current, [activePage]: { ...(current[activePage] || { messages: [], draft: '', sending: false }), draft: value } }))}
+          onSend={handleSendToSocrates}
+          sending={currentPageChat.sending}
+          messages={currentPageChat.messages}
+          nodeCreationState={currentChatNodeCreationState}
         />
-      ) : (
-        <div className="mobile-canvas-screen">
-          <WorkspaceHeader workflow={parsedWorkflow} validation={validation} selectedNode={selectedNode} running={running} onBackToLibrary={() => setActiveView('library')} onRun={() => handleRun(defaultTriggerNodeId)} onOpenJson={() => setJsonPanelOpen(true)} onJumpToTab={goToWorkspaceTab} />
-
-          <div className="workspace-tabbar-shell">
-            <WorkspaceTabBar activeTab={workspaceTab} selectedNodeId={selectedNodeId} onChange={goToWorkspaceTab} />
-          </div>
-
-          {parsedWorkflow ? (
-            <main className="workspace-main">
-              {workspaceTab === 'canvas' ? <WorkspaceCanvasScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} onOpenNodeWorkspace={() => openNodeWorkspace()} onOpenRunWorkspace={() => goToWorkspaceTab('run')} zoom={zoom} pan={pan} onPanChange={setPan} onZoomChange={setZoom} runState={runState} /> : null}
-              {workspaceTab === 'node' ? <WorkspaceNodeScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedTool={selectedTool} selectedNodeId={selectedNodeId} onSelectNode={openNodeWorkspace} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} onSaveSchedule={handleSaveSchedule} onRunScheduleNow={handleRunScheduleNow} onDeleteSchedule={handleDeleteSchedule} scheduleBusy={runningSchedule} /> : null}
-              {workspaceTab === 'run' ? <div className="workspace-screen-stack"><div className="panel workspace-section-intro quiet-surface"><div className="section-title">Run</div></div><div className="panel"><RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} /><div className="event-panel"><div className="section-title">Events</div><EventTimeline events={runState?.events || []} /></div></div></div> : null}
-              {workspaceTab === 'socrates' ? <WorkspaceSocratesScreen connection={connection} socratesMessages={socratesMessages} socratesDraft={socratesDraft} onSocratesDraftChange={setSocratesDraft} onSendToSocrates={handleSendToSocrates} sendingToSocrates={sendingToSocrates} chatNodeCreationState={chatNodeCreationState} /> : null}
-              {workspaceTab === 'organizer' ? <NodeOrganizerScreen summaries={organizerSummaries} selectedToolId={organizerSelectedToolId} onSelectToolId={setOrganizerSelectedToolId} clarificationPreview={clarificationPreview} nodeDraft={organizerNodeDraft} /> : null}
-              {workspaceTab === 'settings' ? <WorkspaceSettingsScreen connection={connection} bridgeUrlDraft={bridgeUrlDraft} onBridgeUrlDraftChange={setBridgeUrlDraft} onSaveBridgeTarget={saveBridgeTarget} onResetBridgeTarget={resetBridgeTarget} onRefreshConnection={refreshConnection} refreshingConnection={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} onConnectProvider={handleConnectProvider} onTestAccount={handleTestAccount} onOpenJson={() => setJsonPanelOpen(true)} /> : null}
-            </main>
-          ) : null}
-        </div>
       )}
+    >
+      {activePage === 'workflows' ? (
+        activeWorkflowId ? (
+          <div className="mobile-canvas-screen">
+            <WorkspaceHeader workflow={parsedWorkflow} validation={validation} selectedNode={selectedNode} running={running} onRun={() => handleRun(defaultTriggerNodeId)} onOpenJson={() => setJsonPanelOpen(true)} onJumpToTab={goToWorkspaceTab} />
+            <div className="workspace-tabbar-shell">
+              <WorkspaceTabBar activeTab={workspaceTab} selectedNodeId={selectedNodeId} onChange={goToWorkspaceTab} />
+            </div>
+            {parsedWorkflow ? (
+              <main className="workspace-main">
+                {workspaceTab === 'canvas' ? <WorkspaceCanvasScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedNodeId={selectedNodeId} onSelectNode={handleSelectNode} onOpenNodeWorkspace={() => openNodeWorkspace()} onOpenRunWorkspace={() => goToWorkspaceTab('run')} zoom={zoom} pan={pan} onPanChange={setPan} onZoomChange={setZoom} runState={runState} /> : null}
+                {workspaceTab === 'node' ? <WorkspaceNodeScreen workflow={parsedWorkflow} selectedNode={selectedNode} selectedTool={selectedTool} selectedNodeId={selectedNodeId} onSelectNode={openNodeWorkspace} runState={runState} onRunTrigger={handleRun} onPatchNode={patchSelectedNode} accounts={connection.accounts || []} onConnectProvider={handleConnectProvider} onSaveSchedule={handleSaveSchedule} onRunScheduleNow={handleRunScheduleNow} onDeleteSchedule={handleDeleteSchedule} scheduleBusy={runningSchedule} /> : null}
+                {workspaceTab === 'run' ? <div className="workspace-screen-stack"><div className="panel workspace-section-intro quiet-surface"><div className="section-title">Run</div></div><div className="panel"><RunPanel runState={runState} running={running} onRun={handleRun} defaultTriggerNodeId={defaultTriggerNodeId} /><div className="event-panel"><div className="section-title">Events</div><EventTimeline events={runState?.events || []} /></div></div></div> : null}
+                {workspaceTab === 'settings' ? <WorkspaceSettingsScreen connection={connection} bridgeUrlDraft={bridgeUrlDraft} onBridgeUrlDraftChange={setBridgeUrlDraft} onSaveBridgeTarget={saveBridgeTarget} onResetBridgeTarget={resetBridgeTarget} onRefreshConnection={refreshConnection} refreshingConnection={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} onConnectProvider={handleConnectProvider} onTestAccount={handleTestAccount} onOpenJson={() => setJsonPanelOpen(true)} /> : null}
+              </main>
+            ) : null}
+          </div>
+        ) : (
+          <WorkflowLibraryScreen
+            libraryView={libraryView}
+            activeWorkflowId={activeWorkflowId}
+            onOpenWorkflow={(workflowId) => { loadWorkflow(workflowId); setActivePage('workflows') }}
+            onNewWorkflow={() => { handleNewWorkflow(); setActivePage('workflows') }}
+            query={libraryQuery}
+            onQueryChange={setLibraryQuery}
+            sort={librarySort}
+            onSortChange={setLibrarySort}
+          />
+        )
+      ) : null}
+
+      {activePage === 'organizer' ? (
+        <ResearchNodeOrganizerPage summaries={organizerSummaries} selectedToolId={organizerSelectedToolId} onSelectToolId={setOrganizerSelectedToolId} clarificationPreview={clarificationPreview} nodeDraft={organizerNodeDraft} />
+      ) : null}
+
+      {activePage === 'settings' ? (
+        <WorkspaceSettingsScreen connection={connection} bridgeUrlDraft={bridgeUrlDraft} onBridgeUrlDraftChange={setBridgeUrlDraft} onSaveBridgeTarget={saveBridgeTarget} onResetBridgeTarget={resetBridgeTarget} onRefreshConnection={refreshConnection} refreshingConnection={refreshingConnection} oauthStatus={oauthStatus} accountsMessage={accountsMessage} onConnectProvider={handleConnectProvider} onTestAccount={handleTestAccount} onOpenJson={() => setJsonPanelOpen(true)} />
+      ) : null}
 
       <BottomSheet open={nodeSheetOpen && !!selectedNode} onClose={() => { setNodeSheetOpen(false); setSelectedNodeId('') }} title={selectedNode?.label || 'Node'} subtitle={selectedTool?.title || selectedNode?.type} tall>
         {selectedNode && parsedWorkflow ? (
@@ -1026,7 +1015,7 @@ function App() {
           {validation.warnings.length > 0 ? <div className="validation-list">{validation.warnings.map((issue) => <div key={`${issue.path}-${issue.message}`} className="validation-item warning">{issue.path}: {issue.message}</div>)}</div> : null}
         </div>
       </BottomSheet>
-    </div>
+    </AppShell>
   )
 }
 

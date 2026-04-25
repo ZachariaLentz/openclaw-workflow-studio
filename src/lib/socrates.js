@@ -1,6 +1,6 @@
 import { resolveBridgeUrl } from './bridge'
-import { buildClarificationPlan } from './nodes/clarificationPolicy'
-import { listAuthorableNodeDefinitions } from './nodes/registry'
+import { buildClarificationPlan } from './nodes/clarificationPolicy.js'
+import { listAuthorableNodeDefinitions } from './nodes/registry.js'
 
 function parseSocratesPayload(payload) {
   if (!payload?.ok) {

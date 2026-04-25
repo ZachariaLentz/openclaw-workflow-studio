@@ -1,8 +1,7 @@
-export function WorkspaceHeader({ workflow, validation, selectedNode, running, onBackToLibrary, onRun, onOpenJson, onJumpToTab }) {
+export function WorkspaceHeader({ workflow, validation, selectedNode, running, onRun, onOpenJson, onJumpToTab }) {
   return (
     <header className="phone-topbar sticky-workspace-header">
       <div className="workspace-header-primary">
-        <button className="secondary-button" onClick={onBackToLibrary}>Library</button>
         <div className="phone-topbar-center">
           <div className="phone-topbar-title">{workflow?.name ?? 'Workflow'}</div>
           <div className="muted small-copy">{workflow?.appId ?? 'unknown app'}</div>
@@ -25,7 +24,6 @@ export function WorkspaceHeader({ workflow, validation, selectedNode, running, o
           <button className="secondary-button" onClick={onOpenJson}>JSON</button>
         </div>
         <div className="workspace-secondary-links">
-          <button className="tertiary-button" onClick={() => onJumpToTab('socrates')}>Socrates</button>
           <button className="tertiary-button" onClick={() => onJumpToTab('settings')}>Settings</button>
         </div>
       </div>

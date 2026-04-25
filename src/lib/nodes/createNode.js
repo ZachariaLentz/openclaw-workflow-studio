@@ -1,4 +1,4 @@
-import { getAuthorableNodeDefinition, getDefaultNodeConfig, getNodeDefinition } from './registry'
+import { getAuthorableNodeDefinition, getDefaultNodeConfig, getNodeDefinition } from './registry.js'
 
 export function createNodeFromRegistry(toolId, overrides = {}) {
   const definition = getNodeDefinition(toolId)

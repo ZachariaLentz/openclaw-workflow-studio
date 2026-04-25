@@ -1,12 +1,15 @@
 import { buildClarificationPlan, inferNodeArchetypeFromRequest } from './clarificationPolicy.js'
 import { buildNodeDraftFromRequest } from './drafts.js'
+import { runNodeDraftHarness } from './harness.js'
+import { buildNextQuestionPrompt, getMissingQuestionIds, mergeChatNodeAnswers } from './chatNodeAnswers.js'
 import { scoreNodeCreationOutcome } from './scoring.js'
+import { validateNodeDraft } from './validation.js'
 
 function hasNodeCreationIntent(message = '') {
   return /\b(make|create|build)\b.*\bnode\b/i.test(String(message || ''))
 }
 
-export function buildChatNodeCreationState(message = '', answers = {}) {
+export async function buildChatNodeCreationState(message = '', answers = {}, latestAnswerText = '') {
   const intent = hasNodeCreationIntent(message)
   if (!intent) {
     return {
@@ -15,18 +18,24 @@ export function buildChatNodeCreationState(message = '', answers = {}) {
       clarificationPlan: null,
       draftResult: null,
       score: null,
+      answers: {},
+      nextQuestion: null,
+      missingQuestionIds: [],
     }
   }
 
   const archetypeId = inferNodeArchetypeFromRequest(message)
   const clarificationPlan = buildClarificationPlan(message, { archetypeId })
-  const draftResult = buildNodeDraftFromRequest(message, answers)
-
-  const requiredQuestions = clarificationPlan?.requiredQuestions || []
-  const answeredCount = Array.isArray(answers.criteria) && answers.criteria.length > 0 ? 3 : 0
+  const mergedAnswers = latestAnswerText ? mergeChatNodeAnswers(answers, latestAnswerText) : answers
+  const missingQuestionIds = getMissingQuestionIds(clarificationPlan, mergedAnswers)
   const complete = clarificationPlan?.type === 'needs_clarification'
-    ? answeredCount >= requiredQuestions.length
+    ? missingQuestionIds.length === 0
     : false
+  const draftResult = buildNodeDraftFromRequest(message, mergedAnswers)
+  const nextQuestion = complete ? null : buildNextQuestionPrompt(clarificationPlan, mergedAnswers)
+  const requiredQuestions = clarificationPlan?.requiredQuestions || []
+  const validation = complete ? validateNodeDraft(message, mergedAnswers) : null
+  const harness = complete ? await runNodeDraftHarness(message, mergedAnswers) : null
 
   const score = complete
     ? scoreNodeCreationOutcome({
@@ -34,8 +43,8 @@ export function buildChatNodeCreationState(message = '', answers = {}) {
         usedExistingNodes: true,
         createdNewNodeWhenNeeded: true,
         createdNewTypeUnnecessarily: false,
-        testsPassed: true,
-        usable: true,
+        testsPassed: harness?.ok === true,
+        usable: validation?.ok === true && harness?.ok === true,
         clarificationQuestionCount: requiredQuestions.length,
         requiredQuestionCount: requiredQuestions.length,
       })
@@ -47,5 +56,10 @@ export function buildChatNodeCreationState(message = '', answers = {}) {
     clarificationPlan,
     draftResult,
     score,
+    answers: mergedAnswers,
+    nextQuestion,
+    missingQuestionIds,
+    validation,
+    harness,
   }
 }

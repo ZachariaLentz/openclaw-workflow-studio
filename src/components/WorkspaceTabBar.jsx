@@ -6,8 +6,6 @@ export function WorkspaceTabBar({ activeTab, selectedNodeId, onChange }) {
   ]
 
   const utilityTabs = [
-    { id: 'socrates', label: 'Socrates' },
-    { id: 'organizer', label: 'Organizer' },
     { id: 'settings', label: 'Settings' },
   ]
 

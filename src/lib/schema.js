@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getNodeConfigSchema } from './nodes/registry'
+import { getNodeConfigSchema } from './nodes/registry.js'
 
 export const nodeTypeEnum = z.enum([
   'trigger',

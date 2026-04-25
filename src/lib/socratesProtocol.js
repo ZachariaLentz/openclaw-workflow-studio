@@ -1,6 +1,6 @@
-import { workflowDefinitionSchema } from './schema'
-import { normalizeNodeForAuthoring } from './nodes/createNode'
-import { buildToolRefFromDefinition } from './nodes/registry'
+import { workflowDefinitionSchema } from './schema.js'
+import { normalizeNodeForAuthoring } from './nodes/createNode.js'
+import { buildToolRefFromDefinition } from './nodes/registry.js'
 
 function cloneValue(value) {
   return structuredClone(value)
