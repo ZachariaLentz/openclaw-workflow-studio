@@ -554,6 +554,8 @@ function App() {
     organizer: { messages: [], draft: '', sending: false },
     settings: { messages: [], draft: '', sending: false },
   })
+  const [chatNodeCreationState, setChatNodeCreationState] = useState({ mode: 'none', intent: false, clarificationPlan: null, draftResult: null, score: null, answers: {}, nextQuestion: null, missingQuestionIds: [], validation: null, harness: null })
+  const [organizerChatNodeCreationState, setOrganizerChatNodeCreationState] = useState({ mode: 'none', intent: false, clarificationPlan: null, draftResult: null, score: null, answers: {}, nextQuestion: null, missingQuestionIds: [], validation: null, harness: null })
   const workflowsRef = useRef(workflows)
   const deferredQuery = useDeferredValue(libraryQuery)
 
@@ -604,8 +606,26 @@ function App() {
   }), [organizerChatDraft])
   const workflowsChatDraft = pageChatState.workflows?.draft || ''
   const organizerChatDraft = pageChatState.organizer?.draft || ''
-  const chatNodeCreationState = useMemo(() => buildChatNodeCreationState(workflowsChatDraft, {}, workflowsChatDraft), [workflowsChatDraft])
-  const organizerChatNodeCreationState = useMemo(() => buildChatNodeCreationState(organizerChatDraft, {}, organizerChatDraft), [organizerChatDraft])
+
+  useEffect(() => {
+    let cancelled = false
+    buildChatNodeCreationState(workflowsChatDraft, {}, workflowsChatDraft).then((result) => {
+      if (!cancelled) setChatNodeCreationState(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [workflowsChatDraft])
+
+  useEffect(() => {
+    let cancelled = false
+    buildChatNodeCreationState(organizerChatDraft, {}, organizerChatDraft).then((result) => {
+      if (!cancelled) setOrganizerChatNodeCreationState(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [organizerChatDraft])
 
   useEffect(() => {
     if (parsedWorkflow?.nodes?.length && !parsedWorkflow.nodes.some((node) => node.id === selectedNodeId)) setSelectedNodeId('')
