@@ -863,29 +863,64 @@ function App() {
   }
 
   async function handleSendToSocrates() {
-    const text = currentPageChat.draft.trim()
-    if (!text || !parsedWorkflow) return
-    setSendingToSocrates(true)
-    setSocratesMessages((current) => [...current, { role: 'user', text }])
-    setSocratesDraft('')
+    const pageKey = activePage
+    const pageChat = pageChatState[pageKey] || { messages: [], draft: '', sending: false }
+    const text = pageChat.draft.trim()
+    if (!text) return
+
+    setPageChatState((current) => ({
+      ...current,
+      [pageKey]: {
+        ...(current[pageKey] || { messages: [], draft: '', sending: false }),
+        sending: true,
+        messages: [...((current[pageKey] || {}).messages || []), { role: 'user', text }],
+        draft: '',
+      },
+    }))
+
     try {
-      const result = await sendToSocrates(text, parsedWorkflow, {
-        activeWorkflowId,
-        libraryWorkflows: workflowsRef.current,
-      })
-      let assistantText = result.reply || 'Socrates responded without a summary.'
-      if (result.change?.type && result.change.type !== 'none') {
-        const nextWorkflow = applySocratesChange(parsedWorkflow, result.change)
-        persistWorkflow(nextWorkflow, { touchOpenedAt: true })
-        setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
-        assistantText = `${assistantText}\n\nApplied ${result.change.type === 'replace_workflow' ? 'a full workflow draft' : 'a structured patch'} and saved it to your workflow library.`
+      if (pageKey === 'workflows' && parsedWorkflow) {
+        const result = await sendToSocrates(text, parsedWorkflow, {
+          activeWorkflowId,
+          libraryWorkflows: workflowsRef.current,
+        })
+        let assistantText = result.reply || 'Socrates responded without a summary.'
+        if (result.change?.type && result.change.type !== 'none') {
+          const nextWorkflow = applySocratesChange(parsedWorkflow, result.change)
+          persistWorkflow(nextWorkflow, { touchOpenedAt: true })
+          setWorkflowText(JSON.stringify(nextWorkflow, null, 2))
+          assistantText = `${assistantText}\n\nApplied ${result.change.type === 'replace_workflow' ? 'a full workflow draft' : 'a structured patch'} and saved it to your workflow library.`
+        }
+        setPageChatState((current) => ({
+          ...current,
+          [pageKey]: {
+            ...(current[pageKey] || { messages: [], draft: '', sending: false }),
+            sending: false,
+            messages: [...((current[pageKey] || {}).messages || []), { role: 'assistant', text: assistantText }],
+          },
+        }))
+      } else {
+        const assistantText = pageKey === 'organizer'
+          ? 'Socrates is in organizer research mode here. Use this chat to explore node hierarchy, archetypes, and reusable node design.'
+          : 'Socrates is available here for page-specific help and analysis.'
+        setPageChatState((current) => ({
+          ...current,
+          [pageKey]: {
+            ...(current[pageKey] || { messages: [], draft: '', sending: false }),
+            sending: false,
+            messages: [...((current[pageKey] || {}).messages || []), { role: 'assistant', text: assistantText }],
+          },
+        }))
       }
-      setSocratesMessages((current) => [...current, { role: 'assistant', text: assistantText }])
-      goToWorkspaceTab('socrates')
     } catch (error) {
-      setSocratesMessages((current) => [...current, { role: 'assistant', text: `Socrates unavailable: ${error.message}` }])
-    } finally {
-      setSendingToSocrates(false)
+      setPageChatState((current) => ({
+        ...current,
+        [pageKey]: {
+          ...(current[pageKey] || { messages: [], draft: '', sending: false }),
+          sending: false,
+          messages: [...((current[pageKey] || {}).messages || []), { role: 'assistant', text: `Socrates unavailable: ${error.message}` }],
+        },
+      }))
     }
   }
 
